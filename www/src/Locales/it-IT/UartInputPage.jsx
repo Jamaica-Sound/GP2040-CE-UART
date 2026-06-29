@@ -1,0 +1,57 @@
+export default {
+  "title": "Configurazione UART",
+  "description": "Configura l'input seriale da un dispositivo esterno.",
+  "enableAddon": "Abilita addon input UART",
+  "baudRate": "Baud Rate",
+  "txPin": "GPIO Pin TX",
+  "rxPin": "GPIO Pin RX",
+  "pinSelectPlaceholder": "Seleziona pin",
+  "enableMapping": "Abilita mappatura pin",
+  "mappingEnabled": "Mappatura attiva",
+  "mappingDisabled": "Mappatura disattivata",
+  "saveButton": "Salva e riconfigura",
+  "saving": "Salvataggio...",
+  "enabledLabel": "Abilitato",
+  "disabledLabel": "Disabilitato",
+  "enableRemoteDisplay": "Abilita display remoto",
+  "uartAddonRouting": "Routing addon UART",
+  "enableAnalogUartInputs": "Abilita input UART analogici",
+  "enableHeTriggerUartInputs": "Abilita input UART HE Trigger",
+  "enableRotaryEncoderUartInputs": "Abilita input UART Rotary Encoder",
+  "none": "Nessuno",
+  "groupButtons": "Pulsanti",
+  "groupActions": "Azioni",
+  "assignedToAddon": "Assegnato all'addon",
+  "reserved": "Riservato",
+  "customCombo": "Combo personalizzata",
+  "saveSuccess": "Configurazione salvata!",
+  "loadError": "Errore nel caricamento della configurazione UART",
+  "saveError": "Errore durante il salvataggio",
+  "profile": {
+    "title": "Profilo",
+    "nameLabel": "Nome profilo",
+    "addButton": "Aggiungi profilo (inattivo)",
+    "defaultName": "Profilo 1"
+  },
+  "pinViewer": {
+    "title": "Visualizzatore pin sorgente",
+    "tooltip": "Mostra l'ultimo pin sorgente ricevuto",
+    "buttonLabel": "Pin Viewer",
+    "lastPinLabel": "Ultimo pin:"
+  },
+  "mappingTable": {
+    "title": "Mappatura Pin Virtuali",
+    "sourcePinHeader": "GPIO → Pin Virtuale → Azione",
+    "autoMapHeader": "Auto‑map",
+    "pinPlaceholder": "Pin",
+    "actionPlaceholder": "Azione",
+    "autoMapTooltip": "Clicca per mappare con il tuo input"
+  },
+  // Nuove chiavi per auto‑detect e verifica stato
+  "autoDetectButton": "Auto‑detect UART",
+  "checkStatusButton": "Verifica configurazione UART",
+  "autoDetectSuccess": "Auto‑detect riuscito! RX={rx}, TX={tx}. Salvare e riavviare.",
+  "autoDetectFailed": "Auto‑detect fallito.",
+  "autoDetectError": "Errore di comunicazione durante l'auto‑detect.",
+  "statusError": "Impossibile recuperare lo stato UART."
+}

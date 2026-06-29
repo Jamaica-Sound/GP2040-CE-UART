@@ -711,7 +711,46 @@ function sanitizeRequest(request) {
 	return newRequest;
 }
 
+// UART Configuration
+async function getUartConfig() {
+    const response = await Http.get(`${baseUrl}/api/getUartConfig`);
+    return response.data;
+}
+
+async function setUartConfig(config) {
+    const response = await Http.post(`${baseUrl}/api/setUartConfig`, config);
+    return response.data;
+}
+
+async function getUartMapping() {
+    const response = await Http.get(`${baseUrl}/api/getUartMapping`);
+    return response.data;
+}
+
+async function setUartMapping(data) {
+    const response = await Http.post(`${baseUrl}/api/setUartMapping`, data);
+    return response.data;
+}
+
+// NEW: Auto-detect UART
+async function autoDetectUart(baudRate) {
+    const response = await Http.post(`${baseUrl}/api/uart_auto_detect`, { baudRate });
+    return response.data;
+}
+
+// NEW: Get UART handshake status
+async function getUartStatus() {
+    const response = await Http.get(`${baseUrl}/api/uart_status`);
+    return response.data;
+}
+
 export default {
+	getUartConfig,
+    setUartConfig,
+	getUartMapping,
+	setUartMapping,
+	autoDetectUart,
+	getUartStatus,
 	resetSettings,
 	getDisplayOptions,
 	setDisplayOptions,

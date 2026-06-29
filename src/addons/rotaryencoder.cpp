@@ -9,9 +9,37 @@
 #include "helper.h"
 #include "config.pb.h"
 
+#include "addons/uart_input.h"
+
+extern UartInputAddon* g_uartAddon;
+
+
+
 bool RotaryEncoderInput::available() {
     const RotaryOptions& options = Storage::getInstance().getAddonOptions().rotaryOptions;
     return options.enabled;
+}
+
+bool RotaryEncoderInput::readRotaryPin(uint8_t gpio)
+{
+    auto& uartOpts =
+        Storage::getInstance().getAddonOptions().uartOptions;
+
+    if (uartOpts.enabled && uartOpts.rotaryencoderEnabled && g_uartAddon != nullptr)
+    {
+        uint32_t virtualMask =
+            g_uartAddon->getVirtualGpioMask();
+
+        uint32_t ownedMask =
+            g_uartAddon->getVirtualOwnedMask();
+
+        if (gpio < 32 && (ownedMask & (1UL << gpio)))
+        {
+            return (virtualMask & (1UL << gpio)) != 0;
+        }
+    }
+
+    return gpio_get(gpio);
 }
 
 void RotaryEncoderInput::setup()
@@ -76,8 +104,8 @@ void RotaryEncoderInput::process()
             uint32_t lastUpdate = now - encoderState[i].updateTime;
 
             if (lastUpdate >= encoderState[i].delay) {
-                bool pinAValue = gpio_get(encoderMap[i].pinA);
-                bool pinBValue = gpio_get(encoderMap[i].pinB);
+                bool pinAValue = RotaryEncoderInput::readRotaryPin(encoderMap[i].pinA);
+                bool pinBValue = RotaryEncoderInput::readRotaryPin(encoderMap[i].pinB);
 
                 uint32_t encoderIncrement = (ENCODER_RADIUS / (encoderMap[i].pulsesPerRevolution / (ENCODER_PRECISION * encoderMap[i].multiplier)));
 

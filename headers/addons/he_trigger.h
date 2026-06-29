@@ -877,6 +877,9 @@ private:
     uint16_t value;
     uint16_t activationThreshold;
     uint16_t releaseThreshold;
+    
+    // Uart input
+    uint16_t readTriggerValue(uint8_t mux);
 };
 
 #endif  // _HE_Trigger_H

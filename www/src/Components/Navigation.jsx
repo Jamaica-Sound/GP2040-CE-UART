@@ -115,6 +115,10 @@ const Navigation = () => {
 						<NavDropdown.Item as={NavLink} eventKey={eventKey++} to="/macro">
 							{t('Navigation:macro-label')}
 						</NavDropdown.Item>
+						{/* Nuova voce UART Inputs */}
+						<NavDropdown.Item as={NavLink} eventKey={eventKey++} to="/uart-input">
+							UART Inputs Configuration
+						</NavDropdown.Item>
 						<NavDropdown.Item as={NavLink} eventKey={eventKey++} to="/backup">
 							{t('Navigation:backup-label')}
 						</NavDropdown.Item>

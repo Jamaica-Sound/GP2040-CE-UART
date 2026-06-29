@@ -33,6 +33,7 @@
 #include "addons/gamepad_usb_host.h"
 #include "addons/he_trigger.h"
 #include "addons/tg16_input.h"
+#include "addons/uart_input.h"
 
 // Pico includes
 #include "pico/bootrom.h"
@@ -116,6 +117,7 @@ void GP2040::setup() {
 	addons.LoadAddon(new RotaryEncoderInput());
 	addons.LoadAddon(new PCF8575Addon());
 	addons.LoadAddon(new TG16padInput());
+  	addons.LoadAddon(new UartInputAddon());
 
 	// Input override addons
 	addons.LoadAddon(new ReverseInput());
@@ -205,6 +207,17 @@ void GP2040::deinitializeStandardGpio() {
  */
 void GP2040::debounceGpioGetAll() {
 	Mask_t raw_gpio = ~gpio_get_all();
+
+if (g_uartAddon) {
+
+    uint32_t owned = g_uartAddon->getVirtualOwnedMask();
+    uint32_t virt   = g_uartAddon->getVirtualGpioMask();
+
+    // applica solo pin realmente mappati
+    raw_gpio =
+        (raw_gpio & ~owned) | (virt & owned);
+}
+
 	Gamepad* gamepad = Storage::getInstance().GetGamepad();
 	// return if state isn't different than the actual
 	if (gamepad->debouncedGpio == (raw_gpio & buttonGpios)) return;

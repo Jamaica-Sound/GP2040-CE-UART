@@ -199,10 +199,13 @@ export default function DisplayConfigPage() {
 
 	const { t } = useTranslation('');
 
+	const [uartOptions, setUartOptions] = useState({ remoteDisplayEnabled: false });
+
 	useEffect(() => {
 		async function fetchData() {
 			const data = await WebApi.getDisplayOptions();
 			const splashImageResponse = await WebApi.getSplashImage();
+			const uartConfig = await WebApi.getUartConfig();
 			data.splashImage = splashImageResponse.splashImage;
 			buttonLayoutDefinitions = await WebApi.getButtonLayoutDefs();
 			buttonLayoutSchema = buttonLayoutSchema.oneOf(
@@ -212,6 +215,7 @@ export default function DisplayConfigPage() {
 				Object.values(buttonLayoutDefinitions.buttonLayoutRight),
 			);
 			setValues(data);
+			setUartOptions(uartConfig);
 			setLoadingValues(false);
 		}
 		updatePeripherals();
@@ -254,7 +258,7 @@ export default function DisplayConfigPage() {
 		>
 			{({ handleSubmit, handleChange, values, errors, setFieldValue }) => (
 				<Section title={t('DisplayConfig:header-text')}>
-					{getAvailablePeripherals('i2c') ? (
+					{getAvailablePeripherals('i2c') || uartOptions?.remoteDisplayEnabled ? (
 						<div>
 							<p>{t('DisplayConfig:sub-header-text')}</p>
 							<ul>

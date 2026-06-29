@@ -908,6 +908,26 @@ message HETriggerOptions
     optional int32 smoothingFactor = 13;
 }
 
+message UartMappingEntry {
+optional int32 virtualPin = 1 [default = -1];
+optional int32 gpio = 2 [default = -1];
+}
+
+message UartOptions {
+    optional bool enabled = 1 [default = false];
+    optional uint32 baudRate = 2 [default = 115200];
+    optional int32 txPin = 3 [default = -1];
+    optional int32 rxPin = 4 [default = -1];
+    repeated UartMappingEntry mappings = 5 [(nanopb).max_count = 30];
+    optional bool mappingEnabled = 6 [default = false];
+    optional bool handshake_done = 7 [default = false];
+    optional bool remoteDisplayEnabled = 8 [default = false];
+    optional bool analogEnabled = 9 [default = false];
+    optional bool he_triggerEnabled = 10 [default = false];
+    optional bool rotaryencoderEnabled = 11 [default = false];
+
+}
+
 message AddonOptions
 {
     optional BootselButtonOptions bootselButtonOptions = 1;
@@ -940,6 +960,7 @@ message AddonOptions
     optional GamepadUSBHostOptions gamepadUSBHostOptions = 28;
     optional TG16Options tg16Options = 29;
     optional HETriggerOptions heTriggerOptions = 30;
+    optional UartOptions uartOptions = 31;
 }
 
 message MigrationHistory

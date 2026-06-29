@@ -3,7 +3,11 @@
 
 #include "hardware/adc.h"
 
+#include "addons/uart_input.h"
+
 #define ADC_MAX ((1 << 12) - 1) // 4095
+
+extern UartInputAddon* g_uartAddon;
 
 bool HETriggerAddon::available() {
     return Storage::getInstance().getAddonOptions().heTriggerOptions.enabled;
@@ -71,8 +75,9 @@ void HETriggerAddon::setup() {
                 adc_select_input(muxPinArray[mux]-26);
                 lastADCSelected = muxPinArray[mux];
             }
-            emaSmoothingReads[i] = adc_read();
-            lastIncrement[i] = adc_read();
+            uint16_t initValue = readTriggerValue(mux);
+            emaSmoothingReads[i] = initValue;
+            lastIncrement[i] = initValue;
             triggerActive[i] = false;
         }
         emaSmoothingFactor = (float)options.smoothingFactor / 100.f; // 99 = max smoothing factor
@@ -93,6 +98,29 @@ uint16_t HETriggerAddon::emaSmoothing(uint16_t value, uint16_t previous) {
     return ((emaSmoothingFactor*ema_value) + ((1.0f-emaSmoothingFactor) * ema_previous)) * ADC_MAX;
 }
 
+uint16_t HETriggerAddon::readTriggerValue(uint8_t mux)
+{
+    auto& uartOpts = Storage::getInstance().getAddonOptions().uartOptions;
+
+    if (uartOpts.enabled && uartOpts.he_triggerEnabled && g_uartAddon != nullptr)
+    {
+        const uint16_t* uartAnalog =
+            g_uartAddon->getVirtualAnalogPinValues();
+
+        if (uartAnalog != nullptr)
+        {
+            uint8_t gpio = muxPinArray[mux];
+
+            if (gpio < UART_INPUT_MAX_ANALOG)
+            {
+                return uartAnalog[gpio] >> 4;
+            }
+        }
+    }
+
+    return adc_read();
+}
+
 void HETriggerAddon::preprocess() {
     Gamepad * gamepad = Storage::getInstance().GetGamepad();
     HETriggerOptions & options = Storage::getInstance().getAddonOptions().heTriggerOptions;
@@ -109,7 +137,7 @@ void HETriggerAddon::preprocess() {
             lastADCSelected = muxPinArray[mux];
         }
 
-        value = adc_read();
+        value = readTriggerValue(mux);
         activationThreshold = (uint16_t)options.triggers[he].active;
         releaseThreshold = (uint16_t)options.triggers[he].active;
 

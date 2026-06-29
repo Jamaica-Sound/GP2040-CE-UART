@@ -36,15 +36,19 @@
 #include "lwip/mem.h"
 #include "addons/input_macro.h"
 
+#include "addons/uart_input.h"
+
 #define PATH_CGI_ACTION "/cgi/action"
 
 #define LWIP_HTTPD_POST_MAX_PAYLOAD_LEN (1024 * 16)
 
 #define MAX_MAPPED_INPUT_MODES 8
 
+extern UartInputAddon* g_uartAddon;
+
 extern struct fsdata_file file__index_html[];
 
-const static char* spaPaths[] = { "/backup", "/display-config", "/led-config", "/pin-mapping", "/settings", "/reset-settings", "/add-ons", "/custom-theme", "/macro", "/peripheral-mapping", "/boot-mode-mapping" };
+const static char* spaPaths[] = { "/backup", "/display-config", "/led-config", "/pin-mapping", "/settings", "/reset-settings", "/add-ons", "/custom-theme", "/macro", "/peripheral-mapping", "/boot-mode-mapping", "/uart-input" };
 const static char* excludePaths[] = { "/css", "/images", "/js", "/static" };
 const static uint32_t rebootDelayMs = 500;
 static string http_post_uri;
@@ -1627,6 +1631,26 @@ std::string getHETriggerVoltage()
         doc["error"] = "adc pin out of range";
         return serialize_json(doc);
     }
+
+    // --- Intercettazione UART ---
+auto& uartOpts = Storage::getInstance().getAddonOptions().uartOptions;
+if (uartOpts.enabled && uartOpts.he_triggerEnabled && g_uartAddon != nullptr) {
+    const int8_t* virtToGpio = g_uartAddon->getVirtualToGpioMap();
+    int found = -1;
+    for (int i = 0; i < UART_INPUT_MAX_VIRTUAL_PINS; i++) {
+        if (virtToGpio[i] == (int8_t)adcSelectPin) {
+            found = i;
+            break;
+        }
+    }
+    if (found != -1) {
+        doc["voltage"] = 3000 + found;   // es. 3000, 3001, ...
+    } else {
+        doc["voltage"] = 0;
+    }
+    return serialize_json(doc);
+}
+
     adc_select_input(adcSelectPin-26);
     // Web-Config triggers getHECalibration every 50ms, game controller triggers <1ms
     if ( calibrationSmoothing ) {
@@ -2492,7 +2516,7 @@ std::string getFirmwareVersion()
 
 std::string getMemoryReport()
 {
-    const size_t capacity = JSON_OBJECT_SIZE(10);
+    const size_t capacity = JSON_OBJECT_SIZE(20);
     DynamicJsonDocument doc(capacity);
     writeDoc(doc, "totalFlash", System::getTotalFlash());
     writeDoc(doc, "usedFlash", System::getUsedFlash());
@@ -2727,6 +2751,154 @@ std:: string getJoystickCenter2() {
     return serialize_json(doc);
 }
 
+// ===== UART Configuration APIs =====
+std::string getUartConfig()
+{
+   const size_t capacity = JSON_OBJECT_SIZE(9);
+    DynamicJsonDocument doc(capacity);
+
+    AddonOptions& addonOpts = Storage::getInstance().getAddonOptions();
+
+    writeDoc(doc, "enabled", addonOpts.uartOptions.enabled);
+    writeDoc(doc, "baudRate", addonOpts.uartOptions.baudRate);
+    writeDoc(doc, "txPin", cleanPin(addonOpts.uartOptions.txPin));
+    writeDoc(doc, "rxPin", cleanPin(addonOpts.uartOptions.rxPin));
+    writeDoc(doc, "remoteDisplayEnabled", addonOpts.uartOptions.remoteDisplayEnabled);
+    writeDoc(doc, "mappingEnabled", addonOpts.uartOptions.mappingEnabled);
+    writeDoc(doc, "analogEnabled", addonOpts.uartOptions.analogEnabled);
+    writeDoc(doc, "he_triggerEnabled", addonOpts.uartOptions.he_triggerEnabled);
+    writeDoc(doc, "rotaryencoderEnabled", addonOpts.uartOptions.rotaryencoderEnabled);
+
+    return serialize_json(doc);
+}
+
+std::string setUartConfig()
+{
+    DynamicJsonDocument doc = get_post_data();
+
+    AddonOptions& addonOpts = Storage::getInstance().getAddonOptions();
+    UartOptions& uartOpts = addonOpts.uartOptions;
+
+    // Salva i vecchi valori per il confronto
+    int oldRx = uartOpts.rxPin;
+    int oldTx = uartOpts.txPin;
+    uint32_t oldBaud = uartOpts.baudRate;
+
+    docToValue(uartOpts.enabled, doc, "enabled");
+    docToValue(uartOpts.baudRate, doc, "baudRate");
+    docToPin(uartOpts.txPin, doc, "txPin");
+    docToPin(uartOpts.rxPin, doc, "rxPin");
+    docToValue(uartOpts.remoteDisplayEnabled, doc, "remoteDisplayEnabled");
+    docToValue(uartOpts.mappingEnabled, doc, "mappingEnabled");
+    docToValue(uartOpts.analogEnabled, doc, "analogEnabled");
+    docToValue(uartOpts.he_triggerEnabled, doc, "he_triggerEnabled");
+    docToValue(uartOpts.rotaryencoderEnabled, doc, "rotaryencoderEnabled");
+
+    // Se i pin o il baudrate sono cambiati, resetta handshake_done
+    if (oldRx != uartOpts.rxPin || oldTx != uartOpts.txPin || oldBaud != uartOpts.baudRate) {
+        uartOpts.handshake_done = false;
+    }
+
+    EventManager::getInstance().triggerEvent(new GPStorageSaveEvent(true));
+
+    return "{\"success\":true}";
+}
+
+std::string getUartMapping()
+{
+    const size_t capacity =
+        JSON_OBJECT_SIZE(1) +
+        JSON_ARRAY_SIZE(30) +
+        (30 * JSON_OBJECT_SIZE(2));
+
+    DynamicJsonDocument doc(capacity);
+
+    AddonOptions& addonOpts = Storage::getInstance().getAddonOptions();
+
+    JsonArray arr = doc.createNestedArray("mappings");
+
+    for (int i = 0; i < 30; i++) {
+        JsonObject obj = arr.createNestedObject();
+
+        obj["virtualPin"] = addonOpts.uartOptions.mappings[i].virtualPin;
+        obj["gpio"] = addonOpts.uartOptions.mappings[i].gpio;
+    }
+
+    return serialize_json(doc);
+}
+
+std::string setUartMapping()
+{
+    DynamicJsonDocument doc = get_post_data();
+
+    AddonOptions& addonOpts = Storage::getInstance().getAddonOptions();
+
+    JsonArray arr = doc["mappings"];
+
+    for (size_t i = 0; i < arr.size() && i < 30; i++) {
+        addonOpts.uartOptions.mappings[i].virtualPin = arr[i]["virtualPin"];
+
+        addonOpts.uartOptions.mappings[i].gpio = arr[i]["gpio"];
+    }
+    addonOpts.uartOptions.mappings_count = arr.size();
+    EventManager::getInstance().triggerEvent(new GPStorageSaveEvent(true));
+
+    return "{\"success\":true}";
+}
+
+std::string autoDetectUart()
+{
+    if (!g_uartAddon) {
+        DynamicJsonDocument resp(256);
+        resp["success"] = false;
+        resp["error"] = "UART addon not initialized";
+        return serialize_json(resp);
+    }
+    DynamicJsonDocument doc = get_post_data();
+    uint32_t baudRate = doc["baudRate"];
+    bool success = g_uartAddon->autoDetect(baudRate);
+    DynamicJsonDocument resp(256);
+    if (success) {
+        resp["success"] = true;
+        resp["rxPin"] = g_uartAddon->getRxPin();
+        resp["txPin"] = g_uartAddon->getTxPin();
+    } else {
+        resp["success"] = false;
+        resp["error"] = "Auto‑detect failed";
+    }
+    return serialize_json(resp);
+}
+
+std::string getUartStatus()
+{
+    if (!g_uartAddon) {
+        DynamicJsonDocument resp(256);
+        resp["status"] = "UART addon not initialized";
+        return serialize_json(resp);
+    }
+    std::string statusMsg;
+    switch (g_uartAddon->getHandshakeStatus()) {
+        case HandshakeStatus::IN_PROGRESS:
+            statusMsg = "Handshake in corso";
+            break;
+        case HandshakeStatus::SUCCESS:
+            if (g_uartAddon->isHandshakeDone() && g_uartAddon->getRxPin() != -1) {
+                statusMsg = "Handshake completato, pin RX/TX configurati e attivi";
+            } else {
+                statusMsg = "Handshake completato, riavvio richiesto per applicare";
+            }
+            break;
+        case HandshakeStatus::TIMEOUT:
+            statusMsg = "Timeout raggiunto, ripetere l'operazione di handshake o tentare l'autodetect";
+            break;
+        default:
+            statusMsg = "Configurazione UART non verificata";
+    }
+    DynamicJsonDocument resp(256);
+    resp["status"] = statusMsg;
+    return serialize_json(resp);
+}
+
 typedef std::string (*HandlerFuncPtr)();
 static const std::pair<const char*, HandlerFuncPtr> handlerFuncs[] =
 {
@@ -2777,8 +2949,14 @@ static const std::pair<const char*, HandlerFuncPtr> handlerFuncs[] =
     { "/api/getConfig", getConfig },
     { "/api/getJoystickCenter", getJoystickCenter },
     { "/api/getJoystickCenter2", getJoystickCenter2 },
-		{ "/api/getBootModeOptions", getBootModeOptions },
-		{ "/api/setBootModeOptions", setBootModeOptions },
+	{ "/api/getBootModeOptions", getBootModeOptions },
+	{ "/api/setBootModeOptions", setBootModeOptions },
+    { "/api/getUartConfig", getUartConfig },
+    { "/api/setUartConfig", setUartConfig },
+    { "/api/getUartMapping", getUartMapping },
+    { "/api/setUartMapping", setUartMapping },
+    { "/api/uart_auto_detect", autoDetectUart },
+    { "/api/uart_status", getUartStatus },
 #if !defined(NDEBUG)
     { "/api/echo", echo },
 #endif

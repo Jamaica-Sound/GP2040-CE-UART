@@ -1158,8 +1158,26 @@ void ConfigUtils::initUnsetPropertiesWithDefaults(Config& config)
     INIT_UNSET_PROPERTY(config.addonOptions.tg16Options, dataPin1, TG16_PAD_DATA_PIN1);
     INIT_UNSET_PROPERTY(config.addonOptions.tg16Options, dataPin2, TG16_PAD_DATA_PIN2);
     INIT_UNSET_PROPERTY(config.addonOptions.tg16Options, dataPin3, TG16_PAD_DATA_PIN3);
-}
 
+    // addonOptions.uartOptions
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, enabled, false);
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, baudRate, 115200);
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, txPin, -1);
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, rxPin, -1);
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, remoteDisplayEnabled, false);
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, mappingEnabled, false);
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, analogEnabled, false);
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, he_triggerEnabled, false);
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, rotaryencoderEnabled, false);
+    // Inizializza i 30 mapping
+    for (int i = 0; i < 30; i++) {
+        INIT_UNSET_PROPERTY(config.addonOptions.uartOptions.mappings[i], virtualPin, UINT32_MAX);
+        INIT_UNSET_PROPERTY(config.addonOptions.uartOptions.mappings[i], gpio, -1);
+    }
+
+    // config.addonOptions.uartOptions.mappings_count = 30;
+
+}
 
 // -----------------------------------------------------
 // migrations

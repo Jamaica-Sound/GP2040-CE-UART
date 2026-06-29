@@ -12,6 +12,7 @@ import krKOFlag from '../Icons/Flags/koKR';
 import esMXFlag from '../Icons/Flags/esMX';
 import trTRFlag from '../Icons/Flags/trTR';
 import frFRFlag from '../Icons/Flags/fr';
+import itITFlag from '../Icons/Flags/itIT'; // Aggiungi questa riga (assicurati che il file esista)
 
 const dropdownOptions = [
 	{ code: 'en', icon: UsFlag },
@@ -23,6 +24,7 @@ const dropdownOptions = [
 	{ code: 'es-MX', icon: esMXFlag },
 	{ code: 'tr-TR', icon: trTRFlag },
 	{ code: 'fr-FR', icon: frFRFlag },
+	{ code: 'it-IT', icon: itITFlag }, // Aggiungi questa riga
 ];
 
 const LanguageSelector = () => {
@@ -56,7 +58,7 @@ const LanguageSelector = () => {
 					}`}
 					onClick={() => setLanguageAndState(option.code)}
 				>
-					<option.icon /> {t(`language-selector.${option.code}`)}
+					<option.icon /> {t(`Components:language-selector.${option.code}`)}
 				</Dropdown.Item>
 			))}
 		</DropdownButton>

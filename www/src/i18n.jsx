@@ -10,6 +10,7 @@ import koKR from './Locales/ko-KR/Index';
 import esMX from './Locales/es-MX/Index';
 import trTR from './Locales/tr-TR/Index';
 import frFR from './Locales/fr-FR/Index';
+import itIT from './Locales/it-IT/Index';
 
 i18n
 	.use(LanguageDetector)
@@ -33,7 +34,8 @@ i18n
 			'ko-KR': koKR,
 			'es-MX': esMX,
 			'tr-TR': trTR,
-			'fr-FR': frFR,			
+			'fr-FR': frFR,
+			'it-IT': itIT,
 		},
 	});
 

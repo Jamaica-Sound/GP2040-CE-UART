@@ -135,6 +135,8 @@ private:
     bool dpadDown = false;
     bool dpadLeft = false;
     bool dpadRight = false;
+
+    bool readRotaryPin(uint8_t gpio);
 };
 
 #endif  // _ROTARYENCODER_H
