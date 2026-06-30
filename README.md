@@ -1,3 +1,11 @@
+UART Support for GP2040-CE firmware with a dedicated new webconfig page designed to receive inputs from an external source to achieve a low latency wireless arcade custom stick. The parser is configured to accept inputs crafted with the `protocol_v2.h`defined here: [Esp32-lowlatency-wireless-gp2040ce-controller](https://github.com/Jamaica-Sound/Esp32-lowlatency-wireless-gp2040ce-controller)
+
+Flow: Esp32 Master (controller) -> espnow -> ESP32 Slave -> uart -> Pico with GP2040-CE-UART firmware
+
+Works with [Esp32-lowlatency-wireless-gp2040ce-controller](https://github.com/Jamaica-Sound/Esp32-lowlatency-wireless-gp2040ce-controller)
+
+Readme in progress......
+
 <p align="center">
   <a href="https://gp2040-ce.info">
     <img alt="GP2040-CE" src="https://raw.githubusercontent.com/OpenStickCommunity/Site/main/docs/assets/images/gp2040-ce-logo.png" />
