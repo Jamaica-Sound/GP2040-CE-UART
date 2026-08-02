@@ -1,13 +1,17 @@
 export default {
   "title": "UART Configuration",
   "description": "Configure external serial input.",
-  "enableAddon": "Enable UART Input Addon",
+  "enableAddon": "UART Input Addon",
   "baudRate": "Baud Rate",
   "txPin": "GPIO TX Pin",
   "rxPin": "GPIO RX Pin",
+  "autoHandshakeLabel": "UART Handshake",
+  "autoHandshakeEnabledLabel": "Auto‑discovery enabled",
+  "autoHandshakeDisabledLabel": "Auto‑discovery disabled",
+  "autoHandshakeDescription": "When enabled, the UART handshake and baudrate negotiation will start automatically if pins or baudrate change. When disabled, specified TX, RX pins and baudrate are used.",
   "pinSelectPlaceholder": "Select pin",
   "enableMapping": "Enable pin mapping",
-  "mappingEnabled": "Mapping active",
+  "mappingEnabled": "Mapping enabled",
   "mappingDisabled": "Mapping disabled",
   "saveButton": "Save & reconfigure",
   "saving": "Saving...",
@@ -44,7 +48,6 @@ export default {
     "actionPlaceholder": "Action",
     "autoMapTooltip": "Click to map with your input"
   },
-  // Nuove chiavi per auto‑detect e verifica stato
   "autoDetectButton": "Auto‑detect UART",
   "checkStatusButton": "Check UART status",
   "autoDetectSuccess": "Auto‑detect successful! RX={rx}, TX={tx}. Please save and restart.",

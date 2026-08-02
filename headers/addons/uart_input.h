@@ -9,7 +9,6 @@
 
 #define UART_INPUT_MAX_VIRTUAL_PINS 64
 
-// limite locale del parser Pico
 #define UART_INPUT_MAX_ANALOG 64
 
 #define UART_RX_BUFFER_SIZE 1024 
@@ -81,10 +80,8 @@ private:
 
 int8_t virtualToGpio[UART_INPUT_MAX_VIRTUAL_PINS];
 
-// Runtime state for digital virtual pins
 uint32_t virtualGpioMask;
 
-// Runtime state for analog virtual pins
 uint16_t virtualAnalogPinValues[UART_INPUT_MAX_ANALOG];
 
 uint32_t virtualOwnedMask = 0;

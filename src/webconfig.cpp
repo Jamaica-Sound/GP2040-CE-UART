@@ -2754,7 +2754,7 @@ std:: string getJoystickCenter2() {
 // ===== UART Configuration APIs =====
 std::string getUartConfig()
 {
-   const size_t capacity = JSON_OBJECT_SIZE(9);
+   const size_t capacity = JSON_OBJECT_SIZE(10);
     DynamicJsonDocument doc(capacity);
 
     AddonOptions& addonOpts = Storage::getInstance().getAddonOptions();
@@ -2768,6 +2768,7 @@ std::string getUartConfig()
     writeDoc(doc, "analogEnabled", addonOpts.uartOptions.analogEnabled);
     writeDoc(doc, "he_triggerEnabled", addonOpts.uartOptions.he_triggerEnabled);
     writeDoc(doc, "rotaryencoderEnabled", addonOpts.uartOptions.rotaryencoderEnabled);
+    writeDoc(doc, "autoHandshakeEnabled", addonOpts.uartOptions.autoHandshakeEnabled);
 
     return serialize_json(doc);
 }
@@ -2779,7 +2780,6 @@ std::string setUartConfig()
     AddonOptions& addonOpts = Storage::getInstance().getAddonOptions();
     UartOptions& uartOpts = addonOpts.uartOptions;
 
-    // Salva i vecchi valori per il confronto
     int oldRx = uartOpts.rxPin;
     int oldTx = uartOpts.txPin;
     uint32_t oldBaud = uartOpts.baudRate;
@@ -2793,8 +2793,8 @@ std::string setUartConfig()
     docToValue(uartOpts.analogEnabled, doc, "analogEnabled");
     docToValue(uartOpts.he_triggerEnabled, doc, "he_triggerEnabled");
     docToValue(uartOpts.rotaryencoderEnabled, doc, "rotaryencoderEnabled");
+    docToValue(uartOpts.autoHandshakeEnabled, doc, "autoHandshakeEnabled");
 
-    // Se i pin o il baudrate sono cambiati, resetta handshake_done
     if (oldRx != uartOpts.rxPin || oldTx != uartOpts.txPin || oldBaud != uartOpts.baudRate) {
         uartOpts.handshake_done = false;
     }

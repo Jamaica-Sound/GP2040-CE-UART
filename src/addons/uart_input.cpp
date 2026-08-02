@@ -23,7 +23,6 @@ static uint8_t runtimeAnalogCount = 0;
 static uint8_t runtimeDigitalPins[64];
 static uint8_t runtimeAnalogPins[64];
 
-// CRC table (precalcolata) – punto 7
 static const uint16_t crc16_table[256] = {
     0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50A5, 0x60C6, 0x70E7,
     0x8108, 0x9129, 0xA14A, 0xB16B, 0xC18C, 0xD1AD, 0xE1CE, 0xF1EF,
@@ -74,9 +73,6 @@ static inline uint16_t jsv2_runtime_size(uint8_t analogCount) {
     return 2 + 1 + 8 + (analogCount * sizeof(uint16_t)) + 2;
 }
 
-// ----------------------------------------------------------------------
-//  UartInputAddon implementation
-// ----------------------------------------------------------------------
 UartInputAddon::UartInputAddon() {
     auto& opts = Storage::getInstance().getAddonOptions().uartOptions;
     rxPin_ = opts.rxPin;
@@ -102,18 +98,22 @@ void UartInputAddon::setup() {
     rxPin_ = opts.rxPin;
     txPin_ = opts.txPin;
     bool pinsValid = (rxPin_ != -1 && txPin_ != -1);
-    bool useDiscovery = pinsValid && !opts.handshake_done;
+    bool useDiscovery = pinsValid && !opts.handshake_done && opts.autoHandshakeEnabled;
     baudRate_ = useDiscovery ? 9600 : opts.baudRate;
 
-    if (pinsValid && !opts.handshake_done) {
+    if (useDiscovery) {
         handshakeNeeded_ = true;
         handshakeStep_ = HS_IDLE;
         handshakeStartTime_ = 0;
         handshakeStepStart_ = 0;
         handshakeStatus_ = HandshakeStatus::IN_PROGRESS;
-    } else if (pinsValid && opts.handshake_done) {
+    } else if (pinsValid) {
         handshakeNeeded_ = false;
         handshakeStatus_ = HandshakeStatus::SUCCESS;
+        if (!opts.handshake_done) {
+            opts.handshake_done = true;
+            Storage::getInstance().save();
+        }
     } else {
         handshakeNeeded_ = false;
         handshakeStatus_ = HandshakeStatus::IDLE;
@@ -207,15 +207,12 @@ void UartInputAddon::updateHandshake() {
                           handshakeStepStart_ = now;
                          break;
                         }
-                   // --- AGGIUNTA: riconoscimento SKIP_DISCOVERY ---
                   if (strstr(buf, "SKIP_DISCOVERY") != nullptr) {
                        pos = 0; memset(buf, 0, sizeof(buf));
-                       // Salta le fasi 1 e 2, vai direttamente all'handshake finale
                        handshakeStep_ = HS_SEND_FINAL;
                        handshakeStepStart_ = now;
                        break;
                     }
-                // ------------------------------------------------
                   pos = 0; memset(buf, 0, sizeof(buf));
                   continue;
               }
@@ -254,7 +251,6 @@ void UartInputAddon::updateHandshake() {
         return;
     }
 
-    // No specific tx/rx pins: use standard pattern handshake
     switch (handshakeStep_) {
         case HS_IDLE:
             handshakeStep_ = HS_SEND_JS;
@@ -299,7 +295,7 @@ void UartInputAddon::process() {
     if (!initialized) return;
     if (handshakeStatus_ != HandshakeStatus::SUCCESS) return;
 
-    const uint16_t bufMask = UART_RX_BUFFER_SIZE - 1; // punto 1
+    const uint16_t bufMask = UART_RX_BUFFER_SIZE - 1;
 
     while (uart_is_readable(uart0)) {
         uint16_t next = (rxHead + 1) & bufMask;
@@ -329,7 +325,6 @@ void UartInputAddon::process() {
             uint16_t needed = jsv2_runtime_size(runtimeAnalogCount);
             if (available < needed) return;
 
-            // CRC check senza copia intermedia (punto 3 saltato, manteniamo copia per semplicità)
             uint8_t tmp[256];
             for (int k = 0; k < needed-2; k++)
                 tmp[k] = rxBuffer[(i+k) & bufMask];
@@ -343,7 +338,6 @@ void UartInputAddon::process() {
 
             uint16_t p = (i + 3) & bufMask;
 
-            // digitalBits con memcpy (punto 6)
             uint64_t digitalBits = 0;
             if (p + 8 <= UART_RX_BUFFER_SIZE) {
                 memcpy(&digitalBits, &rxBuffer[p], 8);
@@ -354,7 +348,6 @@ void UartInputAddon::process() {
             }
             p = (p + 8) & bufMask;
 
-            // Scrittura diretta degli analogici (punto 4)
             for (int a = 0; a < runtimeAnalogCount; a++) {
                 uint16_t idx = (p + a*2) & bufMask;
                 uint16_t value = rxBuffer[idx] | (rxBuffer[(idx+1) & bufMask] << 8);
@@ -366,7 +359,6 @@ void UartInputAddon::process() {
                 }
             }
 
-            // Digitali (nessuna previousMask – punto 2)
             for (uint8_t i = 0; i < runtimeDigitalCount; i++) {
                 uint64_t mask = (1ULL << i);
                 uint8_t virtualPin = runtimeDigitalPins[i];
@@ -381,7 +373,7 @@ void UartInputAddon::process() {
             }
 
             rxTail = (rxTail + jsv2_runtime_size(runtimeAnalogCount)) & bufMask;
-            return; // punto 5 – esce dopo un pacchetto
+            return;
         }
 
         if (type == JSV2_TYPE_CONFIG) {
@@ -412,14 +404,11 @@ void UartInputAddon::process() {
                 runtimeAnalogPins[k] = rxBuffer[(p + k) & bufMask];
 
             rxTail = (rxTail + needed) & bufMask;
-            return; // punto 5 – esce dopo un pacchetto
+            return;
         }
     }
 }
 
-// ----------------------------------------------------------------------
-//  Static helper functions (bit‑bang, handshake patterns)
-// ----------------------------------------------------------------------
 static void sendBytesBitBang(int pin, uint8_t b1, uint8_t b2, uint32_t baud) {
     uint32_t bitTimeUs = 1000000 / baud;
     gpio_set_function(pin, GPIO_FUNC_SIO);
@@ -516,9 +505,6 @@ static bool receiveSJBitBang(int pin, uint32_t baud, int timeoutMs) {
     return false;
 }
 
-// ----------------------------------------------------------------------
-//  Handshake and public methods
-// ----------------------------------------------------------------------
 bool UartInputAddon::finalHandshakeUart0() {
     static bool phase1Sent = false;
     static bool phase2Sent = false;
@@ -646,7 +632,6 @@ bool UartInputAddon::finalHandshakeUart0() {
 
 bool UartInputAddon::finalHandshake() { return finalHandshakeUart0(); }
 
-// punto 9 – rimozione parametri inutilizzati
 bool UartInputAddon::sendPatternJS() {
     uart_putc(uart0, 0x4A);
     uart_putc(uart0, 0x53);

@@ -1,14 +1,34 @@
 export default {
   "title": "UART Configuration",
   "description": "Configure external serial input.",
-  "enableAddon": "Enable UART Input Addon",
+  "enableAddon": "UART Input Addon",
   "baudRate": "Baud Rate",
   "txPin": "GPIO TX Pin",
   "rxPin": "GPIO RX Pin",
+  "autoHandshakeLabel": "UART Handshake",
+  "autoHandshakeEnabledLabel": "Auto‑discovery enabled",
+  "autoHandshakeDisabledLabel": "Auto‑discovery disabled",
+  "autoHandshakeDescription": "When enabled, the UART handshake and baudrate negotiation will start automatically if pins or baudrate change. When disabled, manual config is used.",
+  "pinSelectPlaceholder": "Select pin",
   "enableMapping": "Enable pin mapping",
-  "mappingEnabled": "Mapping active",
+  "mappingEnabled": "Mapping enabled",
   "mappingDisabled": "Mapping disabled",
   "saveButton": "Save & reconfigure",
+  "saving": "Saving...",
+  "enabledLabel": "Enabled",
+  "disabledLabel": "Disabled",
+  "loadError": "Failed to load UART configuration",
+  "enableRemoteDisplay": "Enable Remote Display",
+  "uartAddonRouting": "UART Addon Routing",
+  "enableAnalogUartInputs": "Enable Analog UART Inputs",
+  "enableHeTriggerUartInputs": "Enable HE Trigger UART Inputs",
+  "enableRotaryEncoderUartInputs": "Enable Rotary Encoder UART Inputs",
+  "none": "None",
+  "groupButtons": "Buttons",
+  "groupActions": "Actions",
+  "assignedToAddon": "Assigned to Addon",
+  "reserved": "Reserved",
+  "customCombo": "Custom Combo",
   "profile": {
     "title": "Profile",
     "nameLabel": "Profile name",
@@ -21,11 +41,17 @@ export default {
     "lastPinLabel": "Last pin:"
   },
   "mappingTable": {
-    "title": "Pin Mapping",
-    "sourcePinHeader": "Source pin → Action",
+    "title": "Virtual Pin Mapping",
+    "sourcePinHeader": "GPIO → Virtual Pin → Action",
     "autoMapHeader": "Auto‑map",
     "pinPlaceholder": "Pin",
     "actionPlaceholder": "Action",
     "autoMapTooltip": "Click to map with your input"
-  }
-};
+  },
+  "autoDetectButton": "Auto‑detect UART",
+  "checkStatusButton": "Check UART status",
+  "autoDetectSuccess": "Auto‑detect successful! RX={rx}, TX={tx}. Please save and restart.",
+  "autoDetectFailed": "Auto‑detect failed.",
+  "autoDetectError": "Communication error during auto‑detect.",
+  "statusError": "Failed to retrieve UART status."
+}

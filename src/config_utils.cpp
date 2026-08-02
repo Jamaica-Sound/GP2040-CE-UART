@@ -1164,6 +1164,7 @@ void ConfigUtils::initUnsetPropertiesWithDefaults(Config& config)
     INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, baudRate, 115200);
     INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, txPin, -1);
     INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, rxPin, -1);
+    INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, autoHandshakeEnabled, false);
     INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, remoteDisplayEnabled, false);
     INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, mappingEnabled, false);
     INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, analogEnabled, false);

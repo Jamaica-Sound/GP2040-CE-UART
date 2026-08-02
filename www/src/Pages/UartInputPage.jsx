@@ -60,22 +60,21 @@ export default function UartInputPage() {
     const [error, setError] = useState(null);
     const [saveMessage, setSaveMessage] = useState('');
 
-    // Stato per auto‑detect e verifica
     const [autoDetectLoading, setAutoDetectLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState(null);
     const [profileLabel, setProfileLabel] = useState('');
     
-    // Configurazione unificata: include anche mappingEnabled
     const [baseConfig, setBaseConfig] = useState({
         enabled: false,
         baudRate: 115200,
-        txPin: -1,      // default None
-        rxPin: -1,      // default None
+        txPin: -1,
+        rxPin: -1,
         mappingEnabled: false,
         remoteDisplayEnabled: false,
         analogEnabled: false,
         he_triggerEnabled: false,
         rotaryencoderEnabled: false,
+        autoHandshakeEnabled: false,
     });
 
 const [mappings, setMappings] = useState(() =>
@@ -87,19 +86,16 @@ const [mappings, setMappings] = useState(() =>
 
     const [lastSourcePin, setLastSourcePin] = useState(null);
 
-    // Store dei profili (per le action)
     const profiles = useProfilesStore((state) => state.profiles);
     const setProfilePin = useProfilesStore((state) => state.setProfilePin);
     const saveProfiles = useProfilesStore((state) => state.saveProfiles);
-    const profileIndex = 0; // profilo principale (indice 0)
+    const profileIndex = 0;
 
-// Helper per ottenere i dati di un GPIO dallo store
     const getPinData = (gpio) => {
     const pinKey = `pin${gpio.toString().padStart(2, '0')}`;
     return profiles[profileIndex]?.[pinKey] || { action: BUTTON_ACTIONS.NONE, customButtonMask: 0, customDpadMask: 0 };
 };
 
-// Funzione per ottenere il valore selezionato (multi) per CustomSelect
 const getMultiValue = (pinData) => {
     if (pinData.action === BUTTON_ACTIONS.NONE) return [];
     if (disabledOptions.includes(pinData.action)) {
@@ -121,7 +117,6 @@ const getMultiValue = (pinData) => {
     return options.filter(option => option.value === pinData.action);
 };
 
-// Funzione per gestire il cambio di azione
 const handleActionChange = (gpio, selected) => {
     const pinKey = `pin${gpio.toString().padStart(2, '0')}`;
     if (!selected || (Array.isArray(selected) && !selected.length)) {
@@ -190,7 +185,6 @@ const handleActionChange = (gpio, selected) => {
     const key = actionNumberToKey[actionNumber];
     if (key && key.startsWith('BUTTON_PRESS_')) {
         const buttonKey = key.replace('BUTTON_PRESS_', '').toUpperCase();
-        // Usa il nome tradotto da buttonNames se esiste, altrimenti il nome originale
         return buttonNames[buttonKey] || key;
         }
     return actionNumber.toString();
@@ -217,6 +211,7 @@ const handleActionChange = (gpio, selected) => {
                 analogEnabled: base.analogEnabled ?? false,
                 he_triggerEnabled: base.he_triggerEnabled ?? false,
                 rotaryencoderEnabled: base.rotaryencoderEnabled ?? false,
+                autoHandshakeEnabled: base.autoHandshakeEnabled ?? false,
             });
 
             if (base.enabled) {
@@ -261,7 +256,8 @@ const handleActionChange = (gpio, selected) => {
                 mappingEnabled: baseConfig.mappingEnabled,
                 analogEnabled: baseConfig.analogEnabled,
                 he_triggerEnabled: baseConfig.he_triggerEnabled,
-                rotaryencoderEnabled: baseConfig.rotaryencoderEnabled
+                rotaryencoderEnabled: baseConfig.rotaryencoderEnabled,
+                autoHandshakeEnabled: baseConfig.autoHandshakeEnabled,
             });
             if (baseConfig.mappingEnabled) {
                 const cleanMappings = mappings.map((m, index) => ({
@@ -281,7 +277,6 @@ const handleActionChange = (gpio, selected) => {
         }
     };
 
-    // Nuove funzioni per auto‑detect e verifica stato
     const handleAutoDetect = async () => {
         setAutoDetectLoading(true);
         setStatusMessage(null);
@@ -289,7 +284,6 @@ const handleActionChange = (gpio, selected) => {
         try {
             const result = await WebApi.autoDetectUart(baseConfig.baudRate);
             if (result.success) {
-                // Aggiorna i pin RX/TX con i valori rilevati
                 setBaseConfig(prev => ({
                     ...prev,
                     rxPin: result.rxPin,
@@ -304,7 +298,6 @@ const handleActionChange = (gpio, selected) => {
             setStatusMessage({ type: 'danger', text: t('autoDetectError', 'Communication error during auto‑detect.') });
         } finally {
             setAutoDetectLoading(false);
-            // Il messaggio rimane visibile finché non viene cambiato
         }
     };
 
@@ -344,7 +337,7 @@ const handleActionChange = (gpio, selected) => {
 
                 <Form>
                     <Row className="mb-3">
-                        <Form.Label column sm={3}>{t('enableAddon', 'Enable UART Input Addon')}</Form.Label>
+                        <Form.Label column sm={3}>{t('enableAddon', 'UART Input Addon')}</Form.Label>
                         <Col sm={9}>
                             <Form.Check
                                 type="switch"
@@ -395,8 +388,29 @@ const handleActionChange = (gpio, selected) => {
                             />
                         </Col>
                     </Row>
+                                        <Row className="mb-3">
+                        <Form.Label column sm={3}>
+                        {t('autoHandshakeLabel', 'UART Handshake')}
+                        </Form.Label>
+                        <Col sm={9}>
+                        <Form.Check
+                            type="switch"
+                            name="autoHandshakeEnabled"
+                            checked={baseConfig.autoHandshakeEnabled}
+                            onChange={handleBaseChange}
+                            label={
+                                baseConfig.autoHandshakeEnabled
+                                ? t('autoHandshakeEnabledLabel', 'Auto‑discovery enabled')
+                                : t('autoHandshakeDisabledLabel', 'Auto‑discovery disabled')
+                            }
+                            disabled={!baseConfig.enabled}
+                        />
+                        <Form.Text className="text-muted">
+                           {t('autoHandshakeDescription', 'When enabled, the UART handshake and baudrate negotiation will start automatically if pins or baudrate change. When disabled, use the "Auto‑detect UART" button below to start discovery manually.')}
+                        </Form.Text>
+                        </Col>
+                    </Row>
                 </Form>
-
                 <hr />
                 
                 <Row className="mb-3">

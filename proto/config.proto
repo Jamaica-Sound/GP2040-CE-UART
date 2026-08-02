@@ -925,7 +925,7 @@ message UartOptions {
     optional bool analogEnabled = 9 [default = false];
     optional bool he_triggerEnabled = 10 [default = false];
     optional bool rotaryencoderEnabled = 11 [default = false];
-
+    optional bool autoHandshakeEnabled = 12 [default = false];
 }
 
 message AddonOptions
