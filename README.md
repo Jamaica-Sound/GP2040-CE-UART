@@ -1,111 +1,152 @@
-UART Support for GP2040-CE firmware with a dedicated new webconfig page designed to receive inputs from an external source to achieve a low latency wireless arcade custom stick. The parser is configured to accept inputs crafted with the `protocol_v2.h`defined here: [Esp32-lowlatency-wireless-gp2040ce-controller](https://github.com/Jamaica-Sound/Esp32-lowlatency-wireless-gp2040ce-controller)
+# GP2040-CE-UART
 
-Flow: Esp32 Master (controller) -> espnow -> ESP32 Slave -> uart -> Pico with GP2040-CE-UART firmware
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-RP2040-blue.svg)](https://github.com/Jamaica-Sound/GP2040-CE-UART)
+[![Based on](https://img.shields.io/badge/based%20on-GP2040--CE-ec008c.svg)](https://github.com/OpenStickCommunity/GP2040-CE)
+[![Wiki](https://img.shields.io/badge/docs-wiki-brightgreen.svg)](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki)
 
-Works with [Esp32-lowlatency-wireless-gp2040ce-controller](https://github.com/Jamaica-Sound/Esp32-lowlatency-wireless-gp2040ce-controller)
+This is a fork of **[GP2040-CE](https://github.com/OpenStickCommunity/GP2040-CE)**, the open-source input firmware for the Raspberry Pi Pico (RP2040) that adds a **UART serial input addon**, letting the Pico receive digital buttons, analog stick values, Hall-Effect trigger data and rotary-encoder input from **any external device over a plain serial link**, merged seamlessly into the normal GP2040-CE input pipeline.
 
-Readme in progress......
+> **Status:** actively developed and functional for its core use case digital buttons, analog sticks, Hall-Effect trigger and rotary-encoder routing over UART all work. The dedicated **UART Inputs Configuration** web page works, but it is still a **work-in-progress**: a few controls are visibly present but not yet wired to real functionality (multi-profile mapping, the pin auto-map buttons, remote display forwarding). The Italian localization added by this fork is also partial. See the [Wiki](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki) for the full, code-verified breakdown of what works today.
 
-<p align="center">
-  <a href="https://gp2040-ce.info">
-    <img alt="GP2040-CE" src="https://raw.githubusercontent.com/OpenStickCommunity/Site/main/docs/assets/images/gp2040-ce-logo.png" />
-  </a>
-</p>
+## Table of Contents
 
-<p align="center">
-  Multi-Platform Gamepad Firmware for RP2040
-</p>
+- [How It Works](#how-it-works)
+- [Protocol Overview](#protocol-overview)
+- [Key Characteristics](#key-characteristics)
+- [Any Device, Not Just the ESP32 Companion Project](#any-device-not-just-the-esp32-companion-project)
+- [Software Requirements](#software-requirements)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+- [Documentation / Wiki](#documentation--wiki)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [Support](#support)
+- [License](#license)
+- [Credits](#credits)
 
-<p align="center">
-  <img src="https://img.shields.io/github/license/OpenStickCommunity/GP2040-CE" />
-  <img src="https://img.shields.io/github/actions/workflow/status/OpenStickCommunity/GP2040-CE/cmake.yml" />
-  <br />
-  <img src="https://img.shields.io/badge/inputlag.science-0.86%20ms-blue" />
-  <img src="https://img.shields.io/badge/MiSTer%20latency-0.765%20ms-blue" />
-</p>
+## How It Works
 
-<p>
-  GP2040-CE (Community Edition) is a gamepad firmware for the Raspberry Pi Pico and other boards based on the RP2040 microcontrollers that combines multi-platform compatibility, low latency and a rich feature set to provide endless customization possibilities without sacrificing performance.
-</p>
+```mermaid
+flowchart LR
+    S["Any external device<br/>speaking JSV2<br/>(e.g. an ESP32 bridge)"] -- "UART" --> A["UartInputAddon<br/>(GP2040-CE-UART)"]
+    A -- "virtual digital / analog buffers" --> P["Normal GP2040-CE<br/>input pipeline"]
+    P -- "USB" --> HOST["PC / Console"]
+```
 
-<p>
-  GP2040-CE is compatible with PC, PS3, PS4, PS5, Nintendo Switch, Xbox One, Steam Deck, MiSTer and Android.
-</p>
+`UartInputAddon` opens UART0 on two configurable GPIOs, parses incoming packets, and exposes the decoded state as a **virtual GPIO mask**. The core input loop transparently substitutes these virtual values in place of the real electrical reading for any GPIO you've mapped in the UART Addon Webpage, any GPIO not mapped in the webpage is left untouched. This means you can mix real GPIOs with virtual ones in your controller configuration.This is a **transparent replacement**, everything downstream (debounce, SOCD cleaning, button-to-action mapping, USB HID reporting) works exactly as it would with or without real physically wired hardware.
 
-## Links
+## Protocol Overview
 
-[Downloads](https://gp2040-ce.info/downloads) | [Installation](https://gp2040-ce.info/installation) | [Wiring](https://gp2040-ce.info/controller-build/wiring) | [Usage](https://gp2040-ce.info/usage) | [FAQ](https://gp2040-ce.info/faq/faq-general) | [GitHub](https://github.com/OpenStickCommunity/GP2040-CE)
+The addon speaks **JSV2**, a small binary protocol defined in [`protocol_v2.h`](https://github.com/Jamaica-Sound/Esp32-lowlatency-wireless-gp2040ce-controller/blob/main/Controller/protocol_v2.h):
 
-Full documentation can be found at [https://gp2040-ce.info](https://gp2040-ce.info)
+- **CONFIG packets** (`type 0x01`) declare how many digital/analog channels the sender will report, and their pin identifiers (up to 64 each). They must be sent at least once per session (be sure it is received and correctly parsed), and as soon as possible (in my configuration the are sent once every second just to be sure they are received early in the session, the generated traffic is risible).
+- **RUNTIME packets** (`type 0x02`) carry the live state of a 64-bit digital bitmask plus one 16-bit value per declared analog channel. They are sent as fast as possible to ensure the best latency.
+- Every packet starts with a `0x534A` sync word and ends with a **CRC16** (poly `0x1021`, init `0xFFFF`); anything that fails the checksum is silently discarded.
 
-## Features
+Full byte-level breakdown: [UART Communication Protocol](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/UART-Communication-Protocol).
 
-- Select from 14 input modes including X-Input, Nintendo Switch, Playstation 4/5, Xbox One, D-Input, and Keyboard
-- Input latency average of 0.76ms in Xinput and 0.91ms for Playstation 5.
-- Multiple SOCD cleaning modes - Up Priority (a.k.a. Stickless), Neutral, and Second Input Priority.
-- Left and Right stick emulation via D-pad inputs as well as dedicated toggle switches.
-- Dual direction via D-pad + LS/RS.
-- Reversed input via a button.
-- [Turbo and Turbo LED](https://gp2040-ce.info/add-ons/turbo) with selectable speed
-- Per-button RGB LED support.
-- PWM Player indicator LED support (XInput only).
-- Multiple LED profiles support.
-- Support for 128x64 monochrome I2C displays - SSD1306, SH1106, and SH1107 compatible.
-- Custom startup splash screen and easy image upload via web configuration.
-- Support for passive buzzer speaker (3v or 5v).
-- [Built-in, embedded web configuration](https://gp2040-ce.info/web-configurator) - No download required!
+## Key Characteristics
 
-Visit the [GP2040-CE Usage](https://gp2040-ce.info/usage) page for more details.
+- **Generic virtual-GPIO override** — up to 30 configurable `physical GPIO ↔ virtual pin` mappings; a mapped GPIO's electrical reading is fully replaced by the UART-sourced value. All configuration (including action assignment) is available here, so you don't need to use the original GPIO Pin Mapping page, which will still reflect any changes. See [Virtual GPIO Mapping](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Virtual-GPIO-Mapping).
+- **Cross-addon routing** — the Analog, Hall-Effect Trigger and Rotary Encoder addons can each source individual GPIOs from the UART virtual buffers instead of real hardware. Each addon reads from UART only for the specific GPIOs that are both (a) present in the mapping table and (b) have that addon's own switch enabled — any GPIO not in the mapping table always reads real hardware, so mixing a physically wired stick with a UART-fed one on the same addon is fully supported. See [Addon Integration](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Addon-Integration).
+- **Two connection modes** — a "trust mode" for pre-agreed manual fixed configurations or an automatic text-based handshake/baud-negotiation sequence for first-time pairing. See [Handshake and Connection](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Handshake-and-Connection).
+- **Runtime-configured, not compile-time** — the addon is always compiled in and does nothing until enabled through the web configurator or its REST API, so a single firmware build works with or without a UART sender attached.
 
-## Performance
+## Any Device, Not Just the ESP32 Companion Project
 
-Input latency is tested using the methodology outlined at [WydD's inputlag.science website](https://inputlag.science/controller/methodology), using the default 1000 Hz (1 ms) polling rate in the firmware. You can read more about the setup we use to conduct latency testing [HERE](https://github.com/OpenStickCommunity/Site/blob/main/latency_testing/README.md) if you are interested in testing for yourself or would just like to know more about the devices used to do the testing.
+This firmware was built to pair with **[Esp32-lowlatency-wireless-gp2040ce-controller](https://github.com/Jamaica-Sound/Esp32-lowlatency-wireless-gp2040ce-controller)**, a companion project that bridges two ESP32 boards over ESP-NOW to this Pico's UART, but the addon itself only cares about receiving valid JSV2 bytes on its RX pin. **Any microcontroller or device that implements the same packet structs, sync word and CRC16 can drive it**, whether that's a different MCU wired directly to the Pico, a PC with a USB-UART adapter, or your own custom sender built around [`protocol_v2.h`](https://github.com/Jamaica-Sound/Esp32-lowlatency-wireless-gp2040ce-controller/blob/main/Controller/protocol_v2.h). See [Interaction with the ESP32 Companion Project](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Interaction-with-the-ESP32-Companion-Project) for the exact boundary between "generic protocol" and "ESP32-project-specific behavior".
 
-| Version | Mode    | Poll Rate | Min     | Max     | Avg     | Stdev   | % on time | %1f skip | %2f skip |
-| ------- | ------- | --------- | ------- | ------- | ------- | ------- | --------- | -------- | -------- |
-| v0.7.12 | Xinput  | 1 ms      | 0.45 ms | 1.28 ms | 0.76 ms | 0.24 ms | 98.48%    | 1.52%    | 0%       |
-| v0.7.12 | Switch  | 1 ms      | 0.41 ms | 1.22 ms | 0.72 ms | 0.24 ms | 98.53%    | 1.47%    | 0%       |
-| v0.7.12 | HID USB | 1 ms      | 0.42 ms | 1.25 ms | 0.73 ms | 0.24 ms | 98.52%    | 1.48%    | 0%       |
-| v0.7.12 | PS3     | 1 ms      | 0.52 ms | 1.46 ms | 0.83 ms | 0.24 ms | 98.37%    | 1.63%    | 0%       |
-| v0.7.12 | PS4     | 1 ms      | 0.55 ms | 2.33 ms | 0.90 ms | 0.32 ms | 98.19%    | 1.81%    | 0%       |
-| v0.7.12 | PS5     | 1 ms      | 0.55 ms | 2.38 ms | 0.91 ms | 0.32 ms | 98.18%    | 1.82%    | 0%       |
+## Software Requirements
 
-Full results can be found in the [GP2040-CE v0.7.12 Firmware Latency Test Results](https://github.com/OpenStickCommunity/Site/raw/main/latency_testing/GP2040-CE_Firmware_Latency_Test_Results_v0.7.12.xlsx) .xlsx Sheet.
+Same toolchain as upstream GP2040-CE:
 
-Results from v0.7.11 can be found [HERE](https://github.com/OpenStickCommunity/Site/raw/main/latency_testing/GP2040-CE_Firmware_Latency_Test_Results_v0.7.11.xlsx). Previous results can be found in the `latency_testing` folder.
+- CMake + the `arm-none-eabi` GCC toolchain
+- `pico-sdk` (pulled in as a submodule)
+- Node.js + npm, only if you intend to modify the web configurator (`www/`)
 
-## Support
+## Quick Start
 
-If you would like to discuss features, issues or anything else related to GP2040-CE please [create an issue](https://github.com/OpenStickCommunity/GP2040-CE/issues/new) or join the [OpenStick GP2040-CE Discord](https://discord.gg/k2pxhke7q8) support channel.
+Download the latest release available at: https://github.com/Jamaica-Sound/GP2040-CE-UART/releases/latest or compile it from source:
+
+```bash
+git clone --recursive https://github.com/Jamaica-Sound/GP2040-CE-UART.git
+cd GP2040-CE-UART
+mkdir build && cd build
+cmake .. -DGP2040_BOARDCONFIG=Pico
+make -j$(nproc)
+```
+### Important note for webconfig configuration:
+
+After flashing the main firmware to the Pico, the serial input may not be available immediately at boot. This means the button combination required to access the web configuration page might not be recognized.
+To perform the initial configuration without pressing any button, you need to flash an additional small file right after the main firmware. This file forces the device to enter web configuration mode on the next reboot.
+You can download the file force_webconfig.uf2 from the releases section of the original upstream repository:
+https://github.com/OpenStickCommunity/GP2040-CE/releases/download/v0.7.12/force_webconfig.uf2
+
+1. Flash the resulting `GP2040-CE-UART_X.X.XX.uf2` onto your Pico in BOOTSEL mode (press BOOTSEL, connect USB, copy the file).
+2. Immediately after, flash `force_webconfig.uf2` using the same method. The Pico will reboot and automatically enter web configuration mode.
+3. Open the web configurator and go to **UART Inputs Configuration**.
+4. Enable the addon, Set **TX Pin** / **RX Pin** to match your wiring.
+5. If pairing with the ESP32 companion project (or any sender implementing the handshake), enable **Auto-Handshake**; otherwise choose from the list a fixed **baudrate** on both ends and **Save**.
+
+Full walkthrough: [Installation and Setup](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Installation-and-Setup).
+
+## Configuration
+
+Every setting lives under `uartOptions` in the stored configuration and is editable from the **UART Inputs Configuration** web page (or directly via its REST endpoints).
+
+| Field | Default | Purpose |
+|---|---|---|
+| `enabled` | `false` | Master switch for the addon |
+| `baudRate` | `115200` | UART speed once the link is established, 921600 or higher is reccomended for best latency |
+| `txPin` / `rxPin` | unset | Physical UART GPIOs — required for the addon to start |
+| `autoHandshakeEnabled` | `false` | Run the automatic pairing sequence instead of "trust mode" |
+| `mappingEnabled` + `mappings[30]` | off / unset | The `gpio ↔ virtualPin` table |
+| `analogEnabled` / `he_triggerEnabled` / `rotaryencoderEnabled` | `false` | Per-addon UART routing switches — each also requires the specific GPIO to be present in `mappings` before that addon actually reads from UART |
+| `remoteDisplayEnabled` | `false` | WIP, UI-only today — see the Wiki |
+
+Full field-by-field and REST API reference: [Configuration Reference](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Configuration-Reference).
+
+## Documentation / Wiki
+
+This README covers the essentials. The project [**Wiki**](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki) is a full, code-verified reference.
+
+| Page | Content |
+|---|---|
+| [Architecture Overview](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Architecture-Overview) | Where the addon sits in GP2040-CE, high-level data flow |
+| [Installation and Setup](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Installation-and-Setup) | Building, flashing, enabling the addon |
+| [UART Communication Protocol](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/UART-Communication-Protocol) | The JSV2 packet format, CRC16, packet types |
+| [Handshake and Connection](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Handshake-and-Connection) | Trust mode vs. the automatic pairing sequence |
+| [Virtual GPIO Mapping](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Virtual-GPIO-Mapping) | How the 30-entry mapping table overrides physical GPIOs |
+| [Addon Integration](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Addon-Integration) | How Analog, HE Trigger and Rotary Encoder consume UART data |
+| [Interaction with ESP32 Companion Project](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Interaction-with-ESP32-Companion-Project) | The reference use case, and generic third-party device support |
+| [UART Web Configurator](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/UART-Web-Configurator) | Full page walkthrough, including what's still WIP |
+| [Configuration Reference](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Configuration-Reference) | Every field and REST endpoint |
+| [Italian Localization](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Italian-Localization) | What's translated, what isn't |
+| [Troubleshooting](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Troubleshooting) | Common problems and how to read status messages |
+| [Roadmap, Contributing and License](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Roadmap-Contributing-and-License) | Project status and contribution guidelines |
+
+## Roadmap
+
+- Finish wiring up multi-profile pin mapping in the web configurator.
+- Implement actual display-data forwarding behind the "Enable Remote Display" toggle.
+- Complete the Italian translation (24 of 27 UI locale files remain).
+- Firm up the GPIO/baud auto-detect path, or replace it with a more reliable discovery mechanism.
 
 ## Contributing
 
-Want to help improve GP2040-CE? There are a bunch of ways to contribute!
+Issues and pull requests are welcome. See [Roadmap, Contributing and License](https://github.com/Jamaica-Sound/GP2040-CE-UART/wiki/Roadmap-Contributing-and-License) for suggested areas to start from.
 
-### Community Participation
+## Support
 
-Have an idea for a cool new feature, or just want to discuss some technical details with the developers? Join the [OpenStick GP2040-CE Discord](https://discord.gg/k2pxhke7q8) server to participate in our active and ever-growing community!
+For questions or issues, please [open an issue](https://github.com/Jamaica-Sound/GP2040-CE-UART/issues) on this repository.
 
-### Pull Requests
+## License
 
-Pull requests are welcome and encouraged for enhancements, bug fixes and documentation updates.
+Licensed under the [MIT License](https://github.com/Jamaica-Sound/GP2040-CE-UART/blob/main/LICENSE), inherited from upstream GP2040-CE (© OpenStickCommunity, © Jason Skuby).
 
-Please respect the coding style of the file(s) you are working in, and enforce the use of the `.editorconfig` file when present.
+## Credits
 
-## Acknowledgements
-
-- [FeralAI](https://github.com/FeralAI) for building [GP2040](https://github.com/FeralAI/GP2040) and laying the foundation for this community project
-- Ha Thach's excellent [TinyUSB library](https://github.com/hathach/tinyusb) examples
-- fluffymadness's [tinyusb-xinput](https://github.com/fluffymadness/tinyusb-xinput) sample
-- Kevin Boone's [blog post on using RP2040 flash memory as emulated EEPROM](https://kevinboone.me/picoflash.html)
-- [bitbank2](https://github.com/bitbank2) for the [OneBitDisplay](https://github.com/bitbank2/OneBitDisplay) and [BitBang_I2C](https://github.com/bitbank2/BitBang_I2C) libraries, which were ported for use with the Pico SDK
-- [arntsonl](https://github.com/arntsonl) for the amazing cleanup and feature additions that brought us to v0.5.0
-- [alirin222](https://github.com/alirin222) for the awesome turbo code ([@alirin222](https://twitter.com/alirin222) on Twitter)
-- [deeebug](https://github.com/deeebug) for improvements to the web-UI and fixing the PS3 home button issue
-- [TheTrain](https://github.com/TheTrainGoes/GP2040-Projects) and [Fortinbra](https://github.com/Fortinbra) for helping keep our community chugging along
-- [PassingLink](https://github.com/passinglink/passinglink) for the technical details and code for PS4 implementation
-- [Youssef Habchi](https://youssef-habchi.com/) for allowing us to purchase a license to use Road Rage font for the project
-- [tamanegitaro](https://github.com/tamanegitaro/) and [alirin222](https://github.com/alirin222) for the basis of the mini/classic controller work
-- [Ryzee119](https://github.com/Ryzee119) for the wonderful [ogx360_t4](https://github.com/Ryzee119/ogx360_t4/) and xid_driver library for Original Xbox support
-- [Santroller](https://github.com/Santroller/Santroller) and [GIMX](https://github.com/matlo/GIMX) for technical examples of Xbox One authentication using pass-through
-- [Santroller](https://github.com/Santroller/Santroller) for the code necessary to have Xbox 360 run without a dongle
+- **Author:** Jamaica Sound
+- Built on top of the [GP2040-CE](https://github.com/OpenStickCommunity/GP2040-CE) project by OpenStickCommunity
+- Designed to pair with the [Esp32-lowlatency-wireless-gp2040ce-controller](https://github.com/Jamaica-Sound/Esp32-lowlatency-wireless-gp2040ce-controller) companion project
