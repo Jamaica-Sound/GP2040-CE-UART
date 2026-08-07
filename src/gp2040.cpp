@@ -281,6 +281,12 @@ void GP2040::run() {
 			inputDriver->process(gamepad);
 			rebootHotkeys.process(gamepad, configMode);
 			checkSaveRebootState();
+			// Keeps UART reception active even in Web-Config mode
+			// so that virtual pin values stay updated for live calibration.
+			if (g_uartAddon) {
+				g_uartAddon->preprocess();
+				g_uartAddon->process();
+			}
 			continue;
 		}
 

@@ -104,16 +104,17 @@ uint16_t HETriggerAddon::readTriggerValue(uint8_t mux)
 
     if (uartOpts.enabled && uartOpts.he_triggerEnabled && g_uartAddon != nullptr)
     {
-        const uint16_t* uartAnalog =
-            g_uartAddon->getVirtualAnalogPinValues();
+        uint8_t gpio = muxPinArray[mux];
+        uint32_t ownedMask = g_uartAddon->getVirtualOwnedMask();
 
-        if (uartAnalog != nullptr)
+        if (gpio < 32 && (ownedMask & (1UL << gpio)))
         {
-            uint8_t gpio = muxPinArray[mux];
+            const uint16_t* uartAnalog =
+                g_uartAddon->getVirtualAnalogPinValues();
 
-            if (gpio < UART_INPUT_MAX_ANALOG)
+            if (uartAnalog != nullptr && gpio < UART_INPUT_MAX_ANALOG)
             {
-                return uartAnalog[gpio] >> 4;
+                return uartAnalog[gpio];
             }
         }
     }
