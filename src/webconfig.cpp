@@ -1632,24 +1632,19 @@ std::string getHETriggerVoltage()
         return serialize_json(doc);
     }
 
-    // --- Intercettazione UART ---
-auto& uartOpts = Storage::getInstance().getAddonOptions().uartOptions;
-if (uartOpts.enabled && uartOpts.he_triggerEnabled && g_uartAddon != nullptr) {
-    const int8_t* virtToGpio = g_uartAddon->getVirtualToGpioMap();
-    int found = -1;
-    for (int i = 0; i < UART_INPUT_MAX_VIRTUAL_PINS; i++) {
-        if (virtToGpio[i] == (int8_t)adcSelectPin) {
-            found = i;
-            break;
+    // Reads from UART only if "HE Trigger" is enabled on the UART page
+    // And this specific ADC pin is mapped to a virtual pin;
+    // otherwise it proceeds to the physical fallback below (no return here)
+    {
+        auto& uartOpts = Storage::getInstance().getAddonOptions().uartOptions;
+        if (uartOpts.enabled && uartOpts.he_triggerEnabled && g_uartAddon != nullptr) {
+            uint32_t ownedMask = g_uartAddon->getVirtualOwnedMask();
+            if (adcSelectPin < 32 && (ownedMask & (1UL << adcSelectPin))) {
+                doc["voltage"] = g_uartAddon->getVirtualAnalogPinValues()[adcSelectPin];
+                return serialize_json(doc);
+            }
         }
     }
-    if (found != -1) {
-        doc["voltage"] = 3000 + found;   // es. 3000, 3001, ...
-    } else {
-        doc["voltage"] = 0;
-    }
-    return serialize_json(doc);
-}
 
     adc_select_input(adcSelectPin-26);
     // Web-Config triggers getHECalibration every 50ms, game controller triggers <1ms
@@ -2681,20 +2676,31 @@ std:: string getJoystickCenter() {
         // Initialize ADC if not already initialized
         adc_init();
 
-        // Check if specific stick is requested via query parameter
-        // For now, we'll read both sticks and return the appropriate one
-        // In a more sophisticated implementation, we could parse query parameters
+auto& uartOpts = Storage::getInstance().getAddonOptions().uartOptions;
+        uint32_t ownedMask = (uartOpts.enabled && uartOpts.analogEnabled && g_uartAddon != nullptr)
+            ? g_uartAddon->getVirtualOwnedMask() : 0;
 
-        // Read first stick X/Y
+        // Read first stick X/Y — from UART if the pin is mapped AND "Analog" is enabled,
+        // otherwise from the actual physical pin
         if (isValidPin(analogOptions.analogAdc1PinX)) {
-            adc_gpio_init(analogOptions.analogAdc1PinX);
-            adc_select_input(analogOptions.analogAdc1PinX - 26);
-            x = adc_read();
+            uint8_t gpio = analogOptions.analogAdc1PinX;
+            if (gpio < 32 && (ownedMask & (1UL << gpio))) {
+                x = g_uartAddon->getVirtualAnalogPinValues()[gpio];
+            } else {
+                adc_gpio_init(gpio);
+                adc_select_input(gpio - 26);
+                x = adc_read();
+            }
         }
         if (isValidPin(analogOptions.analogAdc1PinY)) {
-            adc_gpio_init(analogOptions.analogAdc1PinY);
-            adc_select_input(analogOptions.analogAdc1PinY - 26);
-            y = adc_read();
+            uint8_t gpio = analogOptions.analogAdc1PinY;
+            if (gpio < 32 && (ownedMask & (1UL << gpio))) {
+                y = g_uartAddon->getVirtualAnalogPinValues()[gpio];
+            } else {
+                adc_gpio_init(gpio);
+                adc_select_input(gpio - 26);
+                y = adc_read();
+            }
         }
     }
 
@@ -2727,16 +2733,31 @@ std:: string getJoystickCenter2() {
         // Initialize ADC if not already initialized
         adc_init();
 
-        // Read second stick X/Y
+        auto& uartOpts = Storage::getInstance().getAddonOptions().uartOptions;
+        uint32_t ownedMask = (uartOpts.enabled && uartOpts.analogEnabled && g_uartAddon != nullptr)
+            ? g_uartAddon->getVirtualOwnedMask() : 0;
+
+        // Read second stick X/Y — from UART if the pin is mapped AND "Analog" is enabled,
+        // otherwise from the actual physical pin
         if (isValidPin(analogOptions.analogAdc2PinX)) {
-            adc_gpio_init(analogOptions.analogAdc2PinX);
-            adc_select_input(analogOptions.analogAdc2PinX - 26);
-            x = adc_read();
+            uint8_t gpio = analogOptions.analogAdc2PinX;
+            if (gpio < 32 && (ownedMask & (1UL << gpio))) {
+                x = g_uartAddon->getVirtualAnalogPinValues()[gpio];
+            } else {
+                adc_gpio_init(gpio);
+                adc_select_input(gpio - 26);
+                x = adc_read();
+            }
         }
         if (isValidPin(analogOptions.analogAdc2PinY)) {
-            adc_gpio_init(analogOptions.analogAdc2PinY);
-            adc_select_input(analogOptions.analogAdc2PinY - 26);
-            y = adc_read();
+            uint8_t gpio = analogOptions.analogAdc2PinY;
+            if (gpio < 32 && (ownedMask & (1UL << gpio))) {
+                y = g_uartAddon->getVirtualAnalogPinValues()[gpio];
+            } else {
+                adc_gpio_init(gpio);
+                adc_select_input(gpio - 26);
+                y = adc_read();
+            }
         }
     }
 

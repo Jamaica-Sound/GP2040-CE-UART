@@ -117,8 +117,8 @@ void GP2040::setup() {
 	addons.LoadAddon(new RotaryEncoderInput());
 	addons.LoadAddon(new PCF8575Addon());
 	addons.LoadAddon(new TG16padInput());
-  	addons.LoadAddon(new UartInputAddon());
-
+	addons.LoadAddon(new UartInputAddon());
+  	
 	// Input override addons
 	addons.LoadAddon(new ReverseInput());
 	addons.LoadAddon(new TurboInput()); // Turbo overrides button states and should be close to the end
@@ -281,6 +281,12 @@ void GP2040::run() {
 			inputDriver->process(gamepad);
 			rebootHotkeys.process(gamepad, configMode);
 			checkSaveRebootState();
+			// Keeps UART reception active even in Web-Config mode
+			// so that virtual pin values stay updated for any use.
+			if (g_uartAddon) {
+				g_uartAddon->preprocess();
+				g_uartAddon->process();
+			}
 			continue;
 		}
 

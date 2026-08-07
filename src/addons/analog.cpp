@@ -157,16 +157,26 @@ void AnalogInput::process() {
 float AnalogInput::readPin(int stick_num, Pin_t pin_adc, uint16_t center) {
     auto& uartOpts = Storage::getInstance().getAddonOptions().uartOptions;
     if (uartOpts.enabled && uartOpts.analogEnabled && g_uartAddon != nullptr) {
-        // pin_adc è l'indice ADC (0-3), il GPIO fisico corrispondente è pin_adc + 26
         uint8_t gpio = pin_adc + ADC_PIN_OFFSET;  // ADC_PIN_OFFSET = 26
-        const uint16_t* uartAnalog = g_uartAddon->getVirtualAnalogPinValues();
-        if (uartAnalog != nullptr && gpio < UART_INPUT_MAX_ANALOG) {
-            uint16_t value = uartAnalog[gpio];
-            // Il valore è già a 16 bit (0-65535)
-            return ((float)value) / 65535.0f;
+        uint32_t ownedMask = g_uartAddon->getVirtualOwnedMask();
+        if (gpio < 32 && (ownedMask & (1UL << gpio))) {
+            const uint16_t* uartAnalog = g_uartAddon->getVirtualAnalogPinValues();
+            if (uartAnalog != nullptr && gpio < UART_INPUT_MAX_ANALOG) {
+                uint16_t adc_value = uartAnalog[gpio];
+                // Applies the same "center" calibration used for physical pins (logic unchanged)
+                if (adc_pairs[stick_num].auto_calibration || center != 0) {
+                    if (adc_value > center) {
+                        adc_value = map(adc_value, center, ADC_MAX, ADC_MAX / 2, ADC_MAX);
+                    } else if (adc_value == center) {
+                        adc_value = ADC_MAX / 2;
+                    } else {
+                        adc_value = map(adc_value, 0, center, 0, ADC_MAX / 2);
+                    }
+                }
+                return ((float)adc_value) / ADC_MAX;
+            }
         }
     }
-
 
     adc_select_input(pin_adc);
     uint16_t adc_value = adc_read();

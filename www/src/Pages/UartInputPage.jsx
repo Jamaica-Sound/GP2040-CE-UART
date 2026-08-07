@@ -358,7 +358,7 @@ const handleActionChange = (gpio, selected) => {
                                 disabled={!baseConfig.enabled}
                                 className="form-select-sm"
                             >
-                                {[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 1500000, 2000000, 3000000, 4000000].map(br => (
+                                {[9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1500000, 2000000, 3000000, 4000000].map(br => (
                                     <option key={br} value={br}>{br}</option>
                                 ))}
                             </Form.Select>
