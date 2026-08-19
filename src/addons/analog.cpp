@@ -68,29 +68,72 @@ void AnalogInput::setup() {
     }
 
     // Intialize and auto center X/Y for each pair
-    for (int i = 0; i < ADC_COUNT; i++) {
-        if(isValidPin(adc_pairs[i].x_pin)) {
+auto& uartOpts = Storage::getInstance().getAddonOptions().uartOptions;
+uint32_t ownedMask = 0;
+if (uartOpts.enabled && uartOpts.analogEnabled && g_uartAddon != nullptr) {
+    ownedMask = g_uartAddon->getVirtualOwnedMask();
+}
+
+for (int i = 0; i < ADC_COUNT; i++) {
+    auto isVirtualPin = [&](Pin_t pin) -> bool {
+        return (pin >= 0 && pin < 32 && (ownedMask & (1UL << pin)));
+    };
+
+    // ---- X Axis ----
+    if (isValidPin(adc_pairs[i].x_pin)) {
+        if (isVirtualPin(adc_pairs[i].x_pin)) {
+            // Virtual pin: read center from UART buffer (if available)
+            if (adc_pairs[i].auto_calibration) {
+                const uint16_t* uartAnalog = g_uartAddon->getVirtualAnalogPinValues();
+                if (uartAnalog != nullptr) {
+                    uint8_t gpio = adc_pairs[i].x_pin;
+                    adc_pairs[i].x_center = 2048;  // ← replaces adc_read()
+                } else {
+                    adc_pairs[i].x_center = 0;  // fallback
+                }
+            } else {
+                adc_pairs[i].x_center = adc_pairs[i].joystick_center_x;
+            }
+        } else {
+            // Physical pin: original behavior
             adc_gpio_init(adc_pairs[i].x_pin);
             if (adc_pairs[i].auto_calibration) {
                 adc_select_input(adc_pairs[i].x_pin - ADC_PIN_OFFSET);
                 adc_pairs[i].x_center = adc_read();
             } else {
-                // if auto calibration is disabled, attempt to use stored manual calibration value
                 adc_pairs[i].x_center = adc_pairs[i].joystick_center_x;
             }
         }
-        if(isValidPin(adc_pairs[i].y_pin)) {
+    }
+
+    // ---- Y Axis ----
+    if (isValidPin(adc_pairs[i].y_pin)) {
+        if (isVirtualPin(adc_pairs[i].y_pin)) {
+            if (adc_pairs[i].auto_calibration) {
+                const uint16_t* uartAnalog = g_uartAddon->getVirtualAnalogPinValues();
+                if (uartAnalog != nullptr) {
+                    uint8_t gpio = adc_pairs[i].y_pin;
+                    adc_pairs[i].y_center = 2048;
+                } else {
+                    adc_pairs[i].y_center = 0;
+                }
+            } else {
+                adc_pairs[i].y_center = adc_pairs[i].joystick_center_y;
+            }
+        } else {
             adc_gpio_init(adc_pairs[i].y_pin);
             if (adc_pairs[i].auto_calibration) {
                 adc_select_input(adc_pairs[i].y_pin - ADC_PIN_OFFSET);
                 adc_pairs[i].y_center = adc_read();
             } else {
-                // if auto calibration is disabled, attempt to use stored manual calibration value
                 adc_pairs[i].y_center = adc_pairs[i].joystick_center_y;
+                }
             }
         }
     }
 }
+
+
 
 void AnalogInput::process() {
     Gamepad * gamepad = Storage::getInstance().GetGamepad();

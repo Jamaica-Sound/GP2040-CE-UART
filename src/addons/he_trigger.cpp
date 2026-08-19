@@ -106,19 +106,21 @@ uint16_t HETriggerAddon::readTriggerValue(uint8_t mux)
     {
         uint8_t gpio = muxPinArray[mux];
         uint32_t ownedMask = g_uartAddon->getVirtualOwnedMask();
+        uint32_t validMask = g_uartAddon->getVirtualAnalogValidMask();
 
-        if (gpio < 32 && (ownedMask & (1UL << gpio)))
+        // Reads from UART only if the pin is mapped AND has already received at least
+        // one real sample; otherwise no ghost value of 0, it reads the physical
+        // pin as the original addon did.
+        if (gpio < 32 && (ownedMask & (1UL << gpio)) && (validMask & (1UL << gpio)))
         {
-            const uint16_t* uartAnalog =
-                g_uartAddon->getVirtualAnalogPinValues();
+            const uint16_t* uartAnalog = g_uartAddon->getVirtualAnalogPinValues();
 
-            if (uartAnalog != nullptr && gpio < UART_INPUT_MAX_ANALOG)
+                if (uartAnalog != nullptr && gpio < UART_INPUT_MAX_ANALOG)
             {
                 return uartAnalog[gpio];
             }
         }
     }
-
     return adc_read();
 }
 

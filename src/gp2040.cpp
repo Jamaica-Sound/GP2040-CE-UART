@@ -103,6 +103,7 @@ void GP2040::setup() {
 	// Setup Add-ons
 	addons.LoadUSBAddon(new KeyboardHostAddon());
 	addons.LoadUSBAddon(new GamepadUSBHostAddon());
+	addons.LoadAddon(new UartInputAddon());
 	addons.LoadAddon(new AnalogInput());
 	addons.LoadAddon(new HETriggerAddon());
 	addons.LoadAddon(new BootselButtonAddon());
@@ -117,7 +118,6 @@ void GP2040::setup() {
 	addons.LoadAddon(new RotaryEncoderInput());
 	addons.LoadAddon(new PCF8575Addon());
 	addons.LoadAddon(new TG16padInput());
-	addons.LoadAddon(new UartInputAddon());
   	
 	// Input override addons
 	addons.LoadAddon(new ReverseInput());
@@ -213,7 +213,7 @@ if (g_uartAddon) {
     uint32_t owned = g_uartAddon->getVirtualOwnedMask();
     uint32_t virt   = g_uartAddon->getVirtualGpioMask();
 
-    // applica solo pin realmente mappati
+    // apply only to actually mapped pins
     raw_gpio =
         (raw_gpio & ~owned) | (virt & owned);
 }

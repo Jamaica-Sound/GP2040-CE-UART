@@ -1170,14 +1170,11 @@ void ConfigUtils::initUnsetPropertiesWithDefaults(Config& config)
     INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, analogEnabled, false);
     INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, he_triggerEnabled, false);
     INIT_UNSET_PROPERTY(config.addonOptions.uartOptions, rotaryencoderEnabled, false);
-    // Inizializza i 30 mapping
+    // 30 mapping initialization
     for (int i = 0; i < 30; i++) {
         INIT_UNSET_PROPERTY(config.addonOptions.uartOptions.mappings[i], virtualPin, UINT32_MAX);
         INIT_UNSET_PROPERTY(config.addonOptions.uartOptions.mappings[i], gpio, -1);
     }
-
-    // config.addonOptions.uartOptions.mappings_count = 30;
-
 }
 
 // -----------------------------------------------------

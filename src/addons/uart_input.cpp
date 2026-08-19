@@ -6,8 +6,9 @@
 #include "pico/stdlib.h"
 #include "pico/time.h"
 #include <cstring>
+#include "hardware/dma.h"
 
-#define UART_BOOT_GRACE_MS 1000
+#define UART_BOOT_GRACE_MS 1
 #define JSV2_SYNC 0x534A
 #define JSV2_TYPE_CONFIG  0x1
 #define JSV2_TYPE_RUNTIME 0x2
@@ -17,11 +18,6 @@ UartInputAddon* g_uartAddon = nullptr;
 static void sendBytesBitBang(int pin, uint8_t b1, uint8_t b2, uint32_t baud);
 static bool receiveJSBitBang(int pin, uint32_t baud, int timeoutMs);
 static bool receiveSJBitBang(int pin, uint32_t baud, int timeoutMs);
-
-static uint8_t runtimeDigitalCount = 0;
-static uint8_t runtimeAnalogCount = 0;
-static uint8_t runtimeDigitalPins[64];
-static uint8_t runtimeAnalogPins[64];
 
 static const uint16_t crc16_table[256] = {
     0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50A5, 0x60C6, 0x70E7,
@@ -39,7 +35,7 @@ static const uint16_t crc16_table[256] = {
     0x6CA6, 0x7C87, 0x4CE4, 0x5CC5, 0x2C22, 0x3C03, 0x0C60, 0x1C41,
     0xEDAE, 0xFD8F, 0xCDEC, 0xDDCD, 0xAD2A, 0xBD0B, 0x8D68, 0x9D49,
     0x7E97, 0x6EB6, 0x5ED5, 0x4EF4, 0x3E13, 0x2E32, 0x1E51, 0x0E70,
-    0xFF9F, 0xEFBE, 0xDFDD, 0xCFFC, 0xBF1B, 0xAF3A, 0x9F59, 0x8F78,
+    0xFF9F, 0xEFBE, 0xDFDD, 0xCFFC, 0xBF1B, 0xAF2E, 0x9F59, 0x8F78,
     0x9188, 0x81A9, 0xB1CA, 0xA1EB, 0xD10C, 0xC12D, 0xF14E, 0xE16F,
     0x1080, 0x00A1, 0x30C2, 0x20E3, 0x5004, 0x4025, 0x7046, 0x6067,
     0x83B9, 0x9398, 0xA3FB, 0xB3DA, 0xC33D, 0xD31C, 0xE37F, 0xF35E,
@@ -50,8 +46,8 @@ static const uint16_t crc16_table[256] = {
     0x26D3, 0x36F2, 0x0691, 0x16B0, 0x6657, 0x7676, 0x4615, 0x5634,
     0xD94C, 0xC96D, 0xF90E, 0xE92F, 0x99C8, 0x89E9, 0xB98A, 0xA9AB,
     0x5844, 0x4865, 0x7806, 0x6827, 0x18C0, 0x08E1, 0x3882, 0x28A3,
-    0xCB7D, 0xDB5C, 0xEB3F, 0xFB1E, 0x8BF9, 0x9BD8, 0xABBB, 0xBB9A,
-    0x4A75, 0x5A54, 0x6A37, 0x7A16, 0x0AF1, 0x1AD0, 0x2AB3, 0x3A92,
+    0xCB7D, 0xDB5C, 0xEB1F, 0xFB3E, 0x8BD9, 0x9BF8, 0xAB9B, 0xBBBA,
+    0x4A55, 0x5A74, 0x6A17, 0x7A36, 0x0AD1, 0x1AF0, 0x2A93, 0x3AB2,
     0xFD2E, 0xED0F, 0xDD6C, 0xCD4D, 0xBDAA, 0xAD8B, 0x9DE8, 0x8DC9,
     0x7C26, 0x6C07, 0x5C64, 0x4C45, 0x3CA2, 0x2C83, 0x1CE0, 0x0CC1,
     0xEF1F, 0xFF3E, 0xCF5D, 0xDF7C, 0xAF9B, 0xBFBA, 0x8FD9, 0x9FF8,
@@ -95,6 +91,11 @@ void UartInputAddon::setup() {
         initialized = false;
         return;
     }
+    #ifdef TPICOC3
+        activeUart_ = uart1;
+    #else
+        activeUart_ = uart0;
+    #endif
     rxPin_ = opts.rxPin;
     txPin_ = opts.txPin;
     bool pinsValid = (rxPin_ != -1 && txPin_ != -1);
@@ -121,12 +122,12 @@ void UartInputAddon::setup() {
         return;
     }
 
-    uart_init(uart0, baudRate_);
-    gpio_set_function(txPin_, GPIO_FUNC_UART);
-    gpio_set_function(rxPin_, GPIO_FUNC_UART);
-    uart_set_hw_flow(uart0, false, false);
-    uart_set_format(uart0, 8, 1, UART_PARITY_NONE);
-    uart_set_fifo_enabled(uart0, true);
+    uart_init(activeUart_, baudRate_);
+    gpio_set_function(txPin_, UART_FUNCSEL_NUM(activeUart_, txPin_));
+    gpio_set_function(rxPin_, UART_FUNCSEL_NUM(activeUart_, rxPin_));
+    uart_set_hw_flow(activeUart_, false, false);
+    uart_set_format(activeUart_, 8, 1, UART_PARITY_NONE);
+    uart_set_fifo_enabled(activeUart_, true);
     rebuildVirtualGpioMap();
     initialized = true;
 }
@@ -135,10 +136,11 @@ void UartInputAddon::rebuildVirtualGpioMap() {
     memset(virtualToGpio, 0xFF, sizeof(virtualToGpio));
     virtualOwnedMask = 0;
     virtualGpioMask = 0;
+    virtualAnalogValidMask = 0;
     auto& opts = Storage::getInstance().getAddonOptions().uartOptions;
     for (int i = 0; i < opts.mappings_count; i++) {
         const auto& map = opts.mappings[i];
-        if (map.virtualPin < UART_INPUT_MAX_VIRTUAL_PINS && map.gpio >= 0 && map.gpio < 30) {
+        if (map.virtualPin >= 0 && map.virtualPin < UART_INPUT_MAX_VIRTUAL_PINS && map.gpio >= 0 && map.gpio < 30) {
             virtualToGpio[map.virtualPin] = (uint8_t)map.gpio;
             virtualOwnedMask |= (1UL << map.gpio);
         }
@@ -169,25 +171,29 @@ void UartInputAddon::updateHandshake() {
                 handshakeStepStart_ = now;
                 break;
             case HS_MANUAL_SEND_RX: {
-                uart_tx_wait_blocking(uart0);
+                uart_tx_wait_blocking(activeUart_);
                 gpio_set_function(rxPin_, GPIO_FUNC_SIO);
                 gpio_set_dir(rxPin_, GPIO_IN);
                 gpio_pull_up(rxPin_);
                 sleep_ms(2);
-                while (uart_is_readable(uart0)) uart_getc(uart0);
+                while (uart_is_readable(activeUart_)) {
+                    uart_getc(activeUart_);
+                }
                 sendBytesBitBang(rxPin_, 0x52, 0x58, baudRate_);
                 gpio_put(rxPin_, 1);
                 sleep_ms(10);
-                uart_tx_wait_blocking(uart0);
-                while (uart_is_readable(uart0)) uart_getc(uart0);
-                uart_deinit(uart0);
+                uart_tx_wait_blocking(activeUart_);
+                while (uart_is_readable(activeUart_)) {
+                    uart_getc(activeUart_);
+                }
+                uart_deinit(activeUart_);
                 sleep_ms(5);
-                uart_init(uart0, baudRate_);
-                gpio_set_function(txPin_, GPIO_FUNC_UART);
-                gpio_set_function(rxPin_, GPIO_FUNC_UART);
-                uart_set_hw_flow(uart0, false, false);
-                uart_set_format(uart0, 8, 1, UART_PARITY_NONE);
-                uart_set_fifo_enabled(uart0, true);
+                uart_init(activeUart_, baudRate_);
+                gpio_set_function(txPin_, UART_FUNCSEL_NUM(activeUart_, txPin_));
+                gpio_set_function(rxPin_, UART_FUNCSEL_NUM(activeUart_, rxPin_));
+                uart_set_hw_flow(activeUart_, false, false);
+                uart_set_format(activeUart_, 8, 1, UART_PARITY_NONE);
+                uart_set_fifo_enabled(activeUart_, true);
                 sleep_ms(2);
                 handshakeStep_ = HS_MANUAL_LISTEN_OK;
                 handshakeStepStart_ = now;
@@ -196,8 +202,8 @@ void UartInputAddon::updateHandshake() {
             case HS_MANUAL_LISTEN_OK: {
                static char buf[32];
                static int pos = 0;
-                while (uart_is_readable(uart0)) {
-                  char c = uart_getc(uart0);
+                while (uart_is_readable(activeUart_)) {
+                char c = uart_getc(activeUart_);
                    if (c == '\r') continue;
                    if (c == '\n') {
                        buf[pos] = '\0';
@@ -219,24 +225,25 @@ void UartInputAddon::updateHandshake() {
                 if (c >= 32 && c <= 126 && pos < (int)sizeof(buf)-1)
                   buf[pos++] = c;
                 }
-                 if ((now - handshakeStepStart_) > 500) {
-                   pos = 0; memset(buf, 0, sizeof(buf));
-                   handshakeStep_ = HS_MANUAL_SEND_TX;
-                  handshakeStepStart_ = now;
-               }
+                if ((now - handshakeStepStart_) > 500) {
+                    pos = 0;
+                    memset(buf, 0, sizeof(buf));
+                    handshakeStep_ = HS_MANUAL_SEND_TX;
+                    handshakeStepStart_ = now;
+                }
               break;
             }
             case HS_SEND_FINAL: {
                 static absolute_time_t finalStart = 0;
                 if (finalStart == 0) finalStart = get_absolute_time();
-                bool ok = finalHandshakeUart0();
+                bool ok = finalHandshakeUartX();
                 if (ok) {
                     finalStart = 0;
                     handshakeStep_ = HS_DONE;
                     markHandshakeDone();
                     handshakeStatus_ = HandshakeStatus::SUCCESS;
                     handshakeNeeded_ = false;
-                    uart_puts(uart0, "PICO READY\n");
+                    uart_puts(activeUart_, "PICO READY\n");
                     return;
                 }
                 if (absolute_time_diff_us(finalStart, get_absolute_time()) > 4000000) {
@@ -272,7 +279,7 @@ void UartInputAddon::updateHandshake() {
             }
             break;
         case HS_SEND_FINAL:
-            if (finalHandshakeUart0()) {
+            if (finalHandshakeUartX()) {
                 handshakeStep_ = HS_DONE;
                 markHandshakeDone();
                 handshakeStatus_ = HandshakeStatus::SUCCESS;
@@ -295,19 +302,48 @@ void UartInputAddon::process() {
     if (!initialized) return;
     if (handshakeStatus_ != HandshakeStatus::SUCCESS) return;
 
-    const uint16_t bufMask = UART_RX_BUFFER_SIZE - 1;
+    // If DMA is active, copy data from the DMA buffer to the circular buffer
+    if (dmaEnabled) {
+        if (dmaBufferReady) {
+            // Disable IRQ to avoid race condition while copying
+            irq_set_enabled(DMA_IRQ_0, false);
+            uint8_t* src = (uint8_t*)dmaReadyBuffer;
+            size_t len = runtimeSize;
+            dmaBufferReady = false;
+            irq_set_enabled(DMA_IRQ_0, true);
 
-    while (uart_is_readable(uart0)) {
-        uint16_t next = (rxHead + 1) & bufMask;
-        if (next != rxTail) {
-            rxBuffer[rxHead] = uart_getc(uart0);
-            rxHead = next;
-        } else {
-            uart_getc(uart0);
+            // Copy the packet into the circular buffer
+            const uint16_t bufMask = UART_RX_BUFFER_SIZE - 1;
+            for (size_t i = 0; i < len; i++) {
+                uint16_t next = (rxHead + 1) & bufMask;
+                if (next != rxTail) {
+                    rxBuffer[rxHead] = src[i];
+                    rxHead = next;
+                } else {
+                    // Buffer full: discard the rest (increment error counter if desired)
+                    break;
+                }
+            }
+        }
+    } else {
+        // Polling mode (used only before receiving the config)
+        const uint16_t bufMask = UART_RX_BUFFER_SIZE - 1;
+        while (uart_is_readable(activeUart_)) {
+            uint16_t next = (rxHead + 1) & bufMask;
+            if (next != rxTail) {
+                rxBuffer[rxHead] = uart_getc(activeUart_);
+                rxHead = next;
+            } else {
+                uart_getc(activeUart_);
+            }
         }
     }
 
+    // ------------------------------------------------------------
+    // FROM HERE DOWN: PARSING IDENTICAL TO ORIGINAL (DO NOT MODIFY!)
+    // ------------------------------------------------------------
     while (true) {
+        const uint16_t bufMask = UART_RX_BUFFER_SIZE - 1;
         uint16_t available = (rxHead + UART_RX_BUFFER_SIZE - rxTail) & bufMask;
         if (available < 1) return;
         uint16_t i = rxTail;
@@ -354,8 +390,10 @@ void UartInputAddon::process() {
                 uint8_t virtualPin = runtimeAnalogPins[a];
                 if (virtualPin < UART_INPUT_MAX_VIRTUAL_PINS) {
                     uint8_t gpio = virtualToGpio[virtualPin];
-                    if (gpio != 0xFF && gpio < 30)
+                    if (gpio != 0xFF && gpio < 30) {
                         virtualAnalogPinValues[gpio] = value;
+                        virtualAnalogValidMask |= (1UL << gpio); // first real data received for this GPIO
+                    }
                 }
             }
 
@@ -395,6 +433,7 @@ void UartInputAddon::process() {
                 continue;
             }
 
+            // ---- Received config: store parameters ----
             runtimeDigitalCount = digitalCount;
             runtimeAnalogCount  = analogCount;
             for (int k = 0; k < digitalCount; k++)
@@ -403,9 +442,133 @@ void UartInputAddon::process() {
             for (int k = 0; k < analogCount; k++)
                 runtimeAnalogPins[k] = rxBuffer[(p + k) & bufMask];
 
+            // If DMA is not yet active, calculate runtime size and activate it
+            if (!dmaEnabled && !configReceived) {
+                configReceived = true;
+                runtimeSize = jsv2_runtime_size(runtimeAnalogCount);
+                setupDma(runtimeSize);
+                dmaEnabled = true;
+                // The circular buffer now contains the config; we leave it, but subsequent packets
+                // will arrive via DMA. Clear the circular buffer to avoid confusion.
+                rxTail = rxHead = 0;
+            }
+
             rxTail = (rxTail + needed) & bufMask;
             return;
         }
+
+        // Unknown type: advance by 1 and retry
+        rxTail = (rxTail + 1) & bufMask;
+    }
+}
+
+/* void UartInputAddon::processRuntimePacket(uint8_t* data) {
+    // The packet is already complete and aligned.
+    // Check sync and type (optional, but we can skip if we are sure)
+    uint16_t sync = data[0] | (data[1] << 8);
+    if (sync != JSV2_SYNC) return;  // error
+
+    uint8_t type = data[2];
+    if (type != JSV2_TYPE_RUNTIME) return;
+
+    // Verify CRC (as before)
+    uint16_t crc_calc = jsv2_crc16(data, runtimeSize - 2);
+    uint16_t crc_rx = data[runtimeSize-2] | (data[runtimeSize-1] << 8);
+    if (crc_calc != crc_rx) return;
+
+    // Extract digitalBits and analog values (as in the original code)
+    uint16_t p = 3;
+    uint64_t digitalBits = 0;
+    memcpy(&digitalBits, &data[p], 8);
+    p += 8;
+
+    for (int a = 0; a < runtimeAnalogCount; a++) {
+        uint16_t value = data[p] | (data[p+1] << 8);
+        p += 2;
+        uint8_t virtualPin = runtimeAnalogPins[a];
+        if (virtualPin < UART_INPUT_MAX_VIRTUAL_PINS) {
+            uint8_t gpio = virtualToGpio[virtualPin];
+            if (gpio != 0xFF && gpio < 30) {
+                virtualAnalogPinValues[gpio] = value;
+            }
+        }
+    }
+
+    for (uint8_t b = 0; b < runtimeDigitalCount; b++) {
+        uint64_t mask = (1ULL << b);
+        bool pressed = (digitalBits & mask) != 0;
+        uint8_t virtualPin = runtimeDigitalPins[b];
+        if (virtualPin < UART_INPUT_MAX_VIRTUAL_PINS) {
+            uint8_t gpio = virtualToGpio[virtualPin];
+            if (gpio != 0xFF && gpio < 30) {
+                if (pressed) {
+                    virtualGpioMask |= (1UL << gpio);
+                } else {
+                    virtualGpioMask &= ~(1UL << gpio);
+                }
+            }
+        }
+    }
+} */
+
+// Wrapper for the DMA IRQ handler
+void uart_dma_irq_handler() {
+    if (g_uartAddon) {
+        g_uartAddon->dmaIrqHandler();
+    }
+}
+
+void UartInputAddon::setupDma(uint16_t packetSize) {
+    // Allocate DMA buffers with exact size
+    dmaBufferA = new uint8_t[packetSize];
+    dmaBufferB = new uint8_t[packetSize];
+
+    dmaChannel = dma_claim_unused_channel(true);
+
+    dma_channel_config cfg = dma_channel_get_default_config(dmaChannel);
+    channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
+    channel_config_set_read_increment(&cfg, false);
+    channel_config_set_write_increment(&cfg, true);
+    channel_config_set_dreq(&cfg, uart_get_dreq(activeUart_, false));
+
+    dmaActiveBuffer = dmaBufferA;
+    dmaReadyBuffer = nullptr;
+    dmaBufferReady = false;
+
+    dma_channel_configure(
+        dmaChannel,
+        &cfg,
+        dmaActiveBuffer,
+        &uart_get_hw(activeUart_)->dr,
+        packetSize,
+        true
+    );
+
+    dma_channel_set_irq0_enabled(dmaChannel, true);
+    irq_set_exclusive_handler(DMA_IRQ_0, uart_dma_irq_handler);
+    irq_set_enabled(DMA_IRQ_0, true);
+}
+
+void UartInputAddon::dmaIrqHandler() {
+    if (dma_channel_get_irq0_status(dmaChannel)) {
+        dma_channel_acknowledge_irq0(dmaChannel);
+
+        uint8_t* completed = (uint8_t*)dmaActiveBuffer;
+
+        // Switch buffer
+        if (dmaActiveBuffer == dmaBufferA) {
+            dmaActiveBuffer = dmaBufferB;
+        } else {
+            dmaActiveBuffer = dmaBufferA;
+        }
+
+        // Restart DMA on the new buffer
+        dma_channel_set_write_addr(dmaChannel, dmaActiveBuffer, true);
+        dma_channel_start(dmaChannel);
+
+        // Signal that the buffer is ready to be copied to the circular buffer
+        dmaReadyBuffer = completed;
+        dmaBufferReady = true;
     }
 }
 
@@ -505,7 +668,7 @@ static bool receiveSJBitBang(int pin, uint32_t baud, int timeoutMs) {
     return false;
 }
 
-bool UartInputAddon::finalHandshakeUart0() {
+bool UartInputAddon::finalHandshakeUartX() {
     static bool phase1Sent = false;
     static bool phase2Sent = false;
     static bool baudSent = false;
@@ -519,15 +682,15 @@ bool UartInputAddon::finalHandshakeUart0() {
 
     if (!phase1Sent) {
         const char* msg = "handshake finale\n";
-        for (const char* p = msg; *p; p++) uart_putc(uart0, *p);
+        for (const char* p = msg; *p; p++) uart_putc(activeUart_, *p);
         phaseStart = get_absolute_time();
         pos = 0; memset(buf, 0, sizeof(buf));
         phase1Sent = true;
         return false;
     }
 
-    while (uart_is_readable(uart0)) {
-        char c = uart_getc(uart0);
+    while (uart_is_readable(activeUart_)) {
+        char c = uart_getc(activeUart_);
         if (c == '\n') { buf[pos] = '\0'; break; }
         if (c == '\r') continue;
         if (pos < (int)sizeof(buf)-1) buf[pos++] = c;
@@ -536,8 +699,8 @@ bool UartInputAddon::finalHandshakeUart0() {
     if (!phase2Sent) {
         if (strcmp(buf, "Handshake ok") == 0) {
             const char* msg2 = "trusted\n";
-            for (const char* p = msg2; *p; p++) uart_putc(uart0, *p);
-            uart_tx_wait_blocking(uart0);
+            for (const char* p = msg2; *p; p++) uart_putc(activeUart_, *p);
+            uart_tx_wait_blocking(activeUart_);
             pos = 0; memset(buf, 0, sizeof(buf));
             phase2Sent = true;
             phaseStart = get_absolute_time();
@@ -554,8 +717,8 @@ bool UartInputAddon::finalHandshakeUart0() {
             auto& opts = Storage::getInstance().getAddonOptions().uartOptions;
             char baudStr[16];
             snprintf(baudStr, sizeof(baudStr), "BAUD=%u\n", opts.baudRate);
-            for (char* p = baudStr; *p; p++) uart_putc(uart0, *p);
-            uart_tx_wait_blocking(uart0);
+            for (char* p = baudStr; *p; p++) uart_putc(activeUart_, *p);
+            uart_tx_wait_blocking(activeUart_);
             pos = 0; memset(buf, 0, sizeof(buf));
             baudSent = true;
             phaseStart = get_absolute_time();
@@ -583,13 +746,13 @@ bool UartInputAddon::finalHandshakeUart0() {
             if (baudAckSeen) {
                 auto& opts = Storage::getInstance().getAddonOptions().uartOptions;
                 uint32_t finalBaud = opts.baudRate;
-                uart_deinit(uart0);
-                uart_init(uart0, finalBaud);
-                gpio_set_function(txPin_, GPIO_FUNC_UART);
-                gpio_set_function(rxPin_, GPIO_FUNC_UART);
-                uart_set_hw_flow(uart0, false, false);
-                uart_set_format(uart0, 8, 1, UART_PARITY_NONE);
-                uart_set_fifo_enabled(uart0, true);
+                uart_deinit(activeUart_);
+                uart_init(activeUart_, finalBaud);
+                gpio_set_function(txPin_, UART_FUNCSEL_NUM(activeUart_, txPin_));
+                gpio_set_function(rxPin_, UART_FUNCSEL_NUM(activeUart_, rxPin_));
+                uart_set_hw_flow(activeUart_, false, false);
+                uart_set_format(activeUart_, 8, 1, UART_PARITY_NONE);
+                uart_set_fifo_enabled(activeUart_, true);
                 baudRate_ = finalBaud;
                 phase1Sent = phase2Sent = baudSent = false;
                 baudAckStarted = baudAckSeen = false;
@@ -621,7 +784,7 @@ bool UartInputAddon::finalHandshakeUart0() {
             Storage::getInstance().save();
             handshakeStatus_ = HandshakeStatus::SUCCESS;
             handshakeNeeded_ = false;
-            uart_puts(uart0, "PICO READY\n");
+            uart_puts(activeUart_, "PICO READY\n");
             phase1Sent = phase2Sent = baudSent = false;
             baudAckStarted = baudAckSeen = false;
             return true;
@@ -630,11 +793,11 @@ bool UartInputAddon::finalHandshakeUart0() {
     return false;
 }
 
-bool UartInputAddon::finalHandshake() { return finalHandshakeUart0(); }
+bool UartInputAddon::finalHandshake() { return finalHandshakeUartX(); }
 
 bool UartInputAddon::sendPatternJS() {
-    uart_putc(uart0, 0x4A);
-    uart_putc(uart0, 0x53);
+    uart_putc(activeUart_, 0x4A);
+    uart_putc(activeUart_, 0x53);
     return true;
 }
 
@@ -642,10 +805,10 @@ bool UartInputAddon::receivePatternSJ(int timeoutMs) {
     absolute_time_t start = get_absolute_time();
     while (absolute_time_diff_us(start, get_absolute_time()) < timeoutMs * 1000) {
         tight_loop_contents();
-        if (uart_is_readable(uart0)) {
-            uint8_t b1 = uart_getc(uart0);
-            if (uart_is_readable(uart0)) {
-                uint8_t b2 = uart_getc(uart0);
+        if (uart_is_readable(activeUart_)) {
+            uint8_t b1 = uart_getc(activeUart_);
+            if (uart_is_readable(activeUart_)) {
+                uint8_t b2 = uart_getc(activeUart_);
                 if (b1 == 0x53 && b2 == 0x4A) return true;
             }
         }

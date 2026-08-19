@@ -1632,14 +1632,18 @@ std::string getHETriggerVoltage()
         return serialize_json(doc);
     }
 
-    // Reads from UART only if "HE Trigger" is enabled on the UART page
-    // And this specific ADC pin is mapped to a virtual pin;
-    // otherwise it proceeds to the physical fallback below (no return here)
+    // Reads from UART only if "HE Trigger" is enabled on the UART page,
+    // this specific ADC pin is mapped to a virtual pin, AND that pin has
+    // already received at least one real sample via UART; otherwise
+    // proceeds to the physical fallback below (no return here) — same
+    // exact guard already applied to readTriggerValue(), so calibration
+    // never shows a frozen/ghost value.
     {
         auto& uartOpts = Storage::getInstance().getAddonOptions().uartOptions;
         if (uartOpts.enabled && uartOpts.he_triggerEnabled && g_uartAddon != nullptr) {
             uint32_t ownedMask = g_uartAddon->getVirtualOwnedMask();
-            if (adcSelectPin < 32 && (ownedMask & (1UL << adcSelectPin))) {
+            uint32_t validMask = g_uartAddon->getVirtualAnalogValidMask();
+            if (adcSelectPin < 32 && (ownedMask & (1UL << adcSelectPin)) && (validMask & (1UL << adcSelectPin))) {
                 doc["voltage"] = g_uartAddon->getVirtualAnalogPinValues()[adcSelectPin];
                 return serialize_json(doc);
             }
@@ -2857,7 +2861,12 @@ std::string setUartMapping()
     JsonArray arr = doc["mappings"];
 
     for (size_t i = 0; i < arr.size() && i < 30; i++) {
-        addonOpts.uartOptions.mappings[i].virtualPin = arr[i]["virtualPin"];
+        // The frontend uses -1 for "no virtual pin"; read as uint32_t.
+        // ArduinoJson converts it to 0 instead of preserving the sign, so
+        // we first read it as a signed integer and explicitly convert
+        // it to the "unset" sentinel already used by the rest of the firmware.
+        int32_t vp = arr[i]["virtualPin"] | -1;
+        addonOpts.uartOptions.mappings[i].virtualPin = (vp < 0) ? UINT32_MAX : (uint32_t)vp;
 
         addonOpts.uartOptions.mappings[i].gpio = arr[i]["gpio"];
     }
